@@ -11,7 +11,6 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,9 +36,8 @@ fun TicklistHomeScreen() {
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(text = "Ticklist Climbing")
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors()
+                    Text("Ticklist Climbing")
+                }
             )
         }
     ) { innerPadding ->
@@ -51,7 +49,8 @@ fun TicklistHomeScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(text = "Meine Routen")
+            Text("Meine Routen")
+
             Text(
                 text = "Noch keine Routen vorhanden",
                 modifier = Modifier.padding(top = 12.dp)
