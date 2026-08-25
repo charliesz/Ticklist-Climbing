@@ -11,7 +11,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,14 +21,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -38,10 +36,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,10 +49,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.charlie.ticklist.data.RouteEntity
+import com.charlie.ticklist.data.TicklistDatabase
 import com.charlie.ticklist.ui.theme.TicklistClimbingTheme
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -64,12 +69,19 @@ enum class RouteStatus {
     PROJECT
 }
 
-data class ClimbingRoute(
-    val number: Int,
-    val name: String,
-    val difficulty: String,
-    val status: RouteStatus? = null
-)
+enum class SortMode {
+    NUMBER,
+    STATUS
+}
+
+enum class StatusFilter {
+    ALL,
+    NONE,
+    FLASH,
+    TOP,
+    ZONE,
+    PROJECT
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -86,26 +98,123 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun TicklistHomeScreen() {
-    val routes = remember {
-        mutableStateListOf(
-            *List(90) { index ->
-                val routeNumber = index + 1
-
-                ClimbingRoute(
-                    number = routeNumber,
-                    name = String.format("%02d", routeNumber),
-                    difficulty = "",
-                    status = null
-                )
-            }.toTypedArray()
-        )
+    val context = LocalContext.current
+    val database = remember {
+        TicklistDatabase.getDatabase(context)
     }
 
-    var showRouteDialog by remember { mutableStateOf(false) }
-    var editingRouteIndex by remember { mutableStateOf<Int?>(null) }
-    var routeName by remember { mutableStateOf("") }
-    var routeDifficulty by remember { mutableStateOf("") }
-    var routeStatus by remember { mutableStateOf<RouteStatus?>(null) }
+    val routeDao = database.routeDao()
+    val scope = rememberCoroutineScope()
+    val hapticFeedback = LocalHapticFeedback.current
+
+    val routes by routeDao
+        .observeAllRoutes()
+        .collectAsState(initial = emptyList())
+
+    var sortMode by remember {
+        mutableStateOf(SortMode.NUMBER)
+    }
+
+    var statusFilter by remember {
+        mutableStateOf(StatusFilter.ALL)
+    }
+
+    var hideCompleted by remember {
+        mutableStateOf(false)
+    }
+
+    var showSortMenu by remember {
+        mutableStateOf(false)
+    }
+
+    var showFilterMenu by remember {
+        mutableStateOf(false)
+    }
+
+    var showRouteDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var showDeleteDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var editingRouteNumber by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    var routeName by remember {
+        mutableStateOf("")
+    }
+
+    var routeDifficulty by remember {
+        mutableStateOf("")
+    }
+
+    var routeStatus by remember {
+        mutableStateOf<RouteStatus?>(null)
+    }
+
+    LaunchedEffect(Unit) {
+        if (routeDao.countRoutes() == 0) {
+            routeDao.insertRoutes(
+                (1..90).map { number ->
+                    RouteEntity(
+                        number = number,
+                        name = "%02d".format(number),
+                        difficulty = "",
+                        status = null
+                    )
+                }
+            )
+        }
+    }
+
+    val displayedRoutes = routes
+        .filter { route ->
+            val matchesStatus = when (statusFilter) {
+                StatusFilter.ALL -> true
+                StatusFilter.NONE -> route.status == null
+                StatusFilter.FLASH -> route.status == "FLASH"
+                StatusFilter.TOP -> route.status == "TOP"
+                StatusFilter.ZONE -> route.status == "ZONE"
+                StatusFilter.PROJECT -> route.status == "PROJECT"
+            }
+
+            val matchesCompletedFilter =
+                !hideCompleted || route.status == null
+
+            matchesStatus && matchesCompletedFilter
+        }
+        .let { filteredRoutes ->
+            when (sortMode) {
+                SortMode.NUMBER -> {
+                    filteredRoutes.sortedBy { it.number }
+                }
+
+                SortMode.STATUS -> {
+                    filteredRoutes.sortedWith(
+                        compareBy<RouteEntity> {
+                            statusOrder(it.status)
+                        }.thenBy {
+                            it.number
+                        }
+                    )
+                }
+            }
+        }
+
+    val topCount = routes.count {
+        it.status == "TOP" || it.status == "FLASH"
+    }
+
+    val flashCount = routes.count {
+        it.status == "FLASH"
+    }
+
+    val zoneCount = routes.count {
+        it.status == "ZONE"
+    }
 
     Scaffold(
         topBar = {
@@ -113,75 +222,261 @@ fun TicklistHomeScreen() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(12.dp)
             ) {
                 Text(
-                    text = "${routes.size} Routen",
+                    text = "${displayedRoutes.size} von ${routes.size} Routen",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
                 Text(
-                    text = "Status 2 Sekunden gedrückt halten",
+                    text = "Status 1,5 Sekunden gedrückt halten",
                     style = MaterialTheme.typography.bodySmall
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box {
+                        OutlinedButton(
+                            onClick = {
+                                showSortMenu = true
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 8.dp,
+                                vertical = 2.dp
+                            )
+                        ) {
+                            Text(
+                                text = if (sortMode == SortMode.NUMBER) {
+                                    "Sortierung: Nummer"
+                                } else {
+                                    "Sortierung: Status"
+                                },
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = {
+                                showSortMenu = false
+                            }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Nach Nummer")
+                                },
+                                onClick = {
+                                    sortMode = SortMode.NUMBER
+                                    showSortMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Nach Status")
+                                },
+                                onClick = {
+                                    sortMode = SortMode.STATUS
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+
+                    Box {
+                        OutlinedButton(
+                            onClick = {
+                                showFilterMenu = true
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 8.dp,
+                                vertical = 2.dp
+                            )
+                        ) {
+                            Text(
+                                text = "Filter: ${filterText(statusFilter)}",
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showFilterMenu,
+                            onDismissRequest = {
+                                showFilterMenu = false
+                            }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Alle")
+                                },
+                                onClick = {
+                                    statusFilter = StatusFilter.ALL
+                                    showFilterMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Ohne Status")
+                                },
+                                onClick = {
+                                    statusFilter = StatusFilter.NONE
+                                    showFilterMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Flash")
+                                },
+                                onClick = {
+                                    statusFilter = StatusFilter.FLASH
+                                    showFilterMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Top")
+                                },
+                                onClick = {
+                                    statusFilter = StatusFilter.TOP
+                                    showFilterMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Zone")
+                                },
+                                onClick = {
+                                    statusFilter = StatusFilter.ZONE
+                                    showFilterMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Projekt")
+                                },
+                                onClick = {
+                                    statusFilter = StatusFilter.PROJECT
+                                    showFilterMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (hideCompleted) {
+                                            "Geschaffte ausblenden: Ein"
+                                        } else {
+                                            "Geschaffte ausblenden: Aus"
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    hideCompleted = !hideCompleted
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text("Filter zurücksetzen")
+                                },
+                                onClick = {
+                                    statusFilter = StatusFilter.ALL
+                                    hideCompleted = false
+                                    showFilterMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
+        },
+        bottomBar = {
+            CalculationBar(
+                topCount = topCount,
+                flashCount = flashCount,
+                zoneCount = zoneCount
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    editingRouteIndex = null
+                    editingRouteNumber = null
                     routeName = ""
                     routeDifficulty = ""
                     routeStatus = null
                     showRouteDialog = true
                 }
             ) {
-                Text("+", fontSize = 24.sp)
+                Text(
+                    text = "+",
+                    fontSize = 24.sp
+                )
             }
         }
     ) { innerPadding ->
 
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(innerPadding),
+            contentPadding = PaddingValues(
+                start = 6.dp,
+                end = 6.dp,
+                bottom = 8.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            RouteTableHeader()
+            item {
+                RouteTableHeader()
+            }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 6.dp,
-                    end = 6.dp,
-                    bottom = 80.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                itemsIndexed(routes) { index, route ->
-                    RouteRow(
-                        route = route,
-                        onStatusChange = { newStatus ->
-                            routes[index] = route.copy(status = newStatus)
-                        },
-                        onEdit = {
-                            editingRouteIndex = index
-                            routeName = route.name
-                            routeDifficulty = route.difficulty
-                            routeStatus = route.status
-                            showRouteDialog = true
-                        },
-                        onDelete = {
-                            routes.removeAt(index)
+            items(
+                items = displayedRoutes,
+                key = { it.number }
+            ) { route ->
+
+                RouteRow(
+                    route = route,
+                    onStatusChange = { newStatus ->
+                        scope.launch {
+                            routeDao.updateRoute(
+                                route.copy(
+                                    status = newStatus.name
+                                )
+                            )
+
+                            hapticFeedback.performHapticFeedback(
+                                HapticFeedbackType.LongPress
+                            )
                         }
-                    )
-                }
+                    },
+                    onEdit = {
+                        editingRouteNumber = route.number
+                        routeName = route.name
+                        routeDifficulty = route.difficulty
+                        routeStatus = route.status?.let {
+                            runCatching {
+                                RouteStatus.valueOf(it)
+                            }.getOrNull()
+                        }
+                        showRouteDialog = true
+                    }
+                )
             }
         }
     }
 
     if (showRouteDialog) {
         RouteDialog(
-            title = if (editingRouteIndex == null) {
+            title = if (editingRouteNumber == null) {
                 "Route hinzufügen"
             } else {
                 "Route bearbeiten"
@@ -198,40 +493,104 @@ fun TicklistHomeScreen() {
             onStatusChange = {
                 routeStatus = it
             },
+            onDelete = if (editingRouteNumber != null) {
+                {
+                    showDeleteDialog = true
+                }
+            } else {
+                null
+            },
             onDismiss = {
                 showRouteDialog = false
-                editingRouteIndex = null
+                editingRouteNumber = null
             },
             onSave = {
                 if (routeName.isNotBlank()) {
-                    val index = editingRouteIndex
+                    scope.launch {
+                        val number = editingRouteNumber
 
-                    if (index == null) {
-                        val nextNumber =
-                            if (routes.isEmpty()) {
-                                1
-                            } else {
-                                routes.maxOf { it.number } + 1
+                        if (number == null) {
+                            val nextNumber =
+                                if (routes.isEmpty()) {
+                                    1
+                                } else {
+                                    routes.maxOf {
+                                        it.number
+                                    } + 1
+                                }
+
+                            routeDao.insertRoute(
+                                RouteEntity(
+                                    number = nextNumber,
+                                    name = routeName,
+                                    difficulty = routeDifficulty,
+                                    status = routeStatus?.name
+                                )
+                            )
+                        } else {
+                            routeDao.updateRoute(
+                                RouteEntity(
+                                    number = number,
+                                    name = routeName,
+                                    difficulty = routeDifficulty,
+                                    status = routeStatus?.name
+                                )
+                            )
+                        }
+
+                        showRouteDialog = false
+                        editingRouteNumber = null
+                    }
+                }
+            }
+        )
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+            },
+            title = {
+                Text("Route löschen?")
+            },
+            text = {
+                Text(
+                    "Diese Route wird dauerhaft aus der lokalen Datenbank gelöscht."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val number = editingRouteNumber
+
+                        if (number != null) {
+                            val route = routes.firstOrNull {
+                                it.number == number
                             }
 
-                        routes.add(
-                            ClimbingRoute(
-                                number = nextNumber,
-                                name = routeName,
-                                difficulty = routeDifficulty,
-                                status = routeStatus
-                            )
-                        )
-                    } else {
-                        routes[index] = routes[index].copy(
-                            name = routeName,
-                            difficulty = routeDifficulty,
-                            status = routeStatus
-                        )
-                    }
+                            if (route != null) {
+                                scope.launch {
+                                    routeDao.deleteRoute(route)
+                                }
+                            }
+                        }
 
-                    showRouteDialog = false
-                    editingRouteIndex = null
+                        showDeleteDialog = false
+                        showRouteDialog = false
+                        editingRouteNumber = null
+                    }
+                ) {
+                    Text("Löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                    }
+                ) {
+                    Text("Abbrechen")
                 }
             }
         )
@@ -247,6 +606,7 @@ fun RouteDialog(
     onNameChange: (String) -> Unit,
     onDifficultyChange: (String) -> Unit,
     onStatusChange: (RouteStatus?) -> Unit,
+    onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
@@ -279,10 +639,7 @@ fun RouteDialog(
                     singleLine = true
                 )
 
-                Text(
-                    text = "Status manuell festlegen",
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Text("Status")
 
                 StatusSelectionButton(
                     text = "Kein Status",
@@ -318,6 +675,15 @@ fun RouteDialog(
                 ) {
                     onStatusChange(RouteStatus.PROJECT)
                 }
+
+                if (onDelete != null) {
+                    TextButton(
+                        onClick = onDelete,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Route löschen")
+                    }
+                }
             }
         },
         confirmButton = {
@@ -334,40 +700,55 @@ fun RouteDialog(
 }
 
 @Composable
-fun RouteTableHeader() {
-    Row(
+fun CalculationBar(
+    topCount: Int,
+    flashCount: Int,
+    zoneCount: Int
+) {
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(6.dp)
     ) {
         Text(
-            text = "Route",
-            modifier = Modifier.width(68.dp),
-            style = MaterialTheme.typography.labelLarge
-        )
-
-        HeaderText("Flash")
-        HeaderText("Top")
-        HeaderText("Zone")
-        HeaderText("Projekt")
-
-        Text(
-            text = "Optionen",
-            modifier = Modifier.width(92.dp),
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            text = "Top: $topCount ($flashCount Flash) · Zone: $zoneCount",
+            modifier = Modifier.padding(
+                horizontal = 10.dp,
+                vertical = 8.dp
+            )
         )
     }
 }
 
 @Composable
-fun HeaderText(text: String) {
+fun RouteTableHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Route",
+            modifier = Modifier.weight(1.15f),
+            style = MaterialTheme.typography.labelLarge
+        )
+
+        HeaderText("Flash", Modifier.weight(1f))
+        HeaderText("Top", Modifier.weight(1f))
+        HeaderText("Zone", Modifier.weight(1f))
+        HeaderText("Projekt", Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun HeaderText(
+    text: String,
+    modifier: Modifier
+) {
     Text(
         text = text,
-        modifier = Modifier.width(60.dp),
+        modifier = modifier,
         style = MaterialTheme.typography.labelLarge,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis
@@ -376,99 +757,111 @@ fun HeaderText(text: String) {
 
 @Composable
 fun RouteRow(
-    route: ClimbingRoute,
+    route: RouteEntity,
     onStatusChange: (RouteStatus) -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onEdit: () -> Unit
 ) {
-    Card(
+    var rowProgress by remember(route.number) {
+        mutableStateOf(0f)
+    }
+
+    Box(
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 6.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Card(
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
-                modifier = Modifier.width(68.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = route.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (route.difficulty.isNotBlank()) {
+                Column(
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .pointerInput(route.number) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    onEdit()
+                                }
+                            )
+                        }
+                ) {
                     Text(
-                        text = route.difficulty,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = route.name,
+                        style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-            }
 
-            StatusButton(
-                label = "Flash",
-                selected = route.status == RouteStatus.FLASH
-            ) {
-                onStatusChange(RouteStatus.FLASH)
-            }
-
-            StatusButton(
-                label = "Top",
-                selected = route.status == RouteStatus.TOP
-            ) {
-                onStatusChange(RouteStatus.TOP)
-            }
-
-            StatusButton(
-                label = "Zone",
-                selected = route.status == RouteStatus.ZONE
-            ) {
-                onStatusChange(RouteStatus.ZONE)
-            }
-
-            StatusButton(
-                label = "Projekt",
-                selected = route.status == RouteStatus.PROJECT
-            ) {
-                onStatusChange(RouteStatus.PROJECT)
-            }
-
-            Column(
-                modifier = Modifier.width(92.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                TextButton(
-                    onClick = onEdit,
-                    contentPadding = PaddingValues(
-                        horizontal = 2.dp,
-                        vertical = 0.dp
-                    )
-                ) {
-                    Text(
-                        text = "Editieren",
-                        fontSize = 11.sp
-                    )
+                    if (route.difficulty.isNotBlank()) {
+                        Text(
+                            text = route.difficulty,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
 
-                TextButton(
-                    onClick = onDelete,
-                    contentPadding = PaddingValues(
-                        horizontal = 2.dp,
-                        vertical = 0.dp
-                    )
-                ) {
-                    Text(
-                        text = "Löschen",
-                        fontSize = 11.sp
-                    )
-                }
+                StatusButton(
+                    label = "Flash",
+                    selected = route.status == "FLASH",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.FLASH)
+                    }
+                )
+
+                StatusButton(
+                    label = "Top",
+                    selected = route.status == "TOP",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.TOP)
+                    }
+                )
+
+                StatusButton(
+                    label = "Zone",
+                    selected = route.status == "ZONE",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.ZONE)
+                    }
+                )
+
+                StatusButton(
+                    label = "Projekt",
+                    selected = route.status == "PROJECT",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.PROJECT)
+                    }
+                )
             }
+        }
+
+        if (rowProgress > 0f) {
+            BorderProgress(
+                progress = rowProgress,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
@@ -500,17 +893,16 @@ fun StatusSelectionButton(
 fun StatusButton(
     label: String,
     selected: Boolean,
-    onClick: () -> Unit
+    modifier: Modifier,
+    onProgress: (Float) -> Unit,
+    onComplete: () -> Unit
 ) {
     val progress = remember {
         Animatable(0f)
     }
 
-    val primaryColor = MaterialTheme.colorScheme.primary
-
     Box(
-        modifier = Modifier
-            .width(60.dp)
+        modifier = modifier
             .height(44.dp)
             .padding(horizontal = 1.dp),
         contentAlignment = Alignment.Center
@@ -519,31 +911,26 @@ fun StatusButton(
             Button(
                 onClick = {},
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    horizontal = 2.dp,
-                    vertical = 0.dp
-                ),
-                colors = ButtonDefaults.buttonColors()
+                contentPadding = PaddingValues(1.dp)
             ) {
                 Text(
                     text = label,
                     fontSize = 10.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         } else {
             OutlinedButton(
                 onClick = {},
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    horizontal = 2.dp,
-                    vertical = 0.dp
-                )
+                contentPadding = PaddingValues(1.dp)
             ) {
                 Text(
                     text = label,
                     fontSize = 10.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -555,40 +942,43 @@ fun StatusButton(
                     detectTapGestures(
                         onPress = {
                             coroutineScope {
+                                var released = false
+                                var completed = false
+
+                                progress.snapTo(0f)
+                                onProgress(0f)
+
                                 val animationJob = launch {
                                     progress.animateTo(
                                         targetValue = 1f,
                                         animationSpec = tween(
-                                            durationMillis = 2000
+                                            durationMillis = 1500
                                         )
-                                    )
+                                    ) {
+                                        onProgress(value)
+                                    }
+
+                                    completed = true
                                 }
 
-                                val releasedSuccessfully =
-                                    tryAwaitRelease()
+                                released = tryAwaitRelease()
 
-                                animationJob.cancel()
-
-                                if (
-                                    releasedSuccessfully &&
-                                    progress.value >= 0.999f
-                                ) {
-                                    onClick()
+                                if (completed && released) {
+                                    onComplete()
+                                } else {
+                                    animationJob.cancel()
+                                    progress.snapTo(0f)
+                                    onProgress(0f)
                                 }
 
-                                progress.snapTo(0f)
+                                if (completed) {
+                                    progress.snapTo(0f)
+                                }
                             }
                         }
                     )
                 }
         )
-
-        if (progress.value > 0f) {
-            BorderProgress(
-                progress = progress.value,
-                color = primaryColor
-            )
-        }
     }
 }
 
@@ -598,30 +988,28 @@ fun BorderProgress(
     color: Color
 ) {
     Canvas(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(1.dp)
     ) {
-        val strokeWidth = 3.dp.toPx()
-        val cornerRadius = 12.dp.toPx()
+        val strokeWidth = 4.dp.toPx()
+        val radius = 12.dp.toPx()
 
-        val borderPath = AndroidPath()
+        val path = AndroidPath()
 
-        borderPath.addRoundRect(
+        path.addRoundRect(
             RectF(
                 strokeWidth / 2f,
                 strokeWidth / 2f,
                 size.width - strokeWidth / 2f,
                 size.height - strokeWidth / 2f
             ),
-            cornerRadius,
-            cornerRadius,
+            radius,
+            radius,
             AndroidPath.Direction.CW
         )
 
-        val pathMeasure = PathMeasure(
-            borderPath,
-            false
-        )
-
+        val pathMeasure = PathMeasure(path, false)
         val progressPath = AndroidPath()
 
         pathMeasure.getSegment(
@@ -643,5 +1031,27 @@ fun BorderProgress(
                 paint
             )
         }
+    }
+}
+
+fun statusOrder(status: String?): Int {
+    return when (status) {
+        null -> 0
+        "PROJECT" -> 1
+        "ZONE" -> 2
+        "TOP" -> 3
+        "FLASH" -> 4
+        else -> 5
+    }
+}
+
+fun filterText(filter: StatusFilter): String {
+    return when (filter) {
+        StatusFilter.ALL -> "Alle"
+        StatusFilter.NONE -> "Ohne Status"
+        StatusFilter.FLASH -> "Flash"
+        StatusFilter.TOP -> "Top"
+        StatusFilter.ZONE -> "Zone"
+        StatusFilter.PROJECT -> "Projekt"
     }
 }
