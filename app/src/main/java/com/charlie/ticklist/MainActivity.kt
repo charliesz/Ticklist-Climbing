@@ -24,14 +24,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -66,11 +64,6 @@ enum class RouteStatus {
     PROJECT
 }
 
-enum class SortMode {
-    NUMBER,
-    STATUS
-}
-
 data class ClimbingRoute(
     val number: Int,
     val name: String,
@@ -96,11 +89,11 @@ fun TicklistHomeScreen() {
     val routes = remember {
         mutableStateListOf(
             *List(90) { index ->
-                val number = index + 1
+                val routeNumber = index + 1
 
                 ClimbingRoute(
-                    number = number,
-                    name = String.format("%02d", number),
+                    number = routeNumber,
+                    name = String.format("%02d", routeNumber),
                     difficulty = "",
                     status = null
                 )
@@ -108,63 +101,11 @@ fun TicklistHomeScreen() {
         )
     }
 
-    var sortMode by remember {
-        mutableStateOf(SortMode.NUMBER)
-    }
-
-    var filterStatus by remember {
-        mutableStateOf<RouteStatus?>(null)
-    }
-
-    var showSortMenu by remember {
-        mutableStateOf(false)
-    }
-
-    var showFilterMenu by remember {
-        mutableStateOf(false)
-    }
-
-    var showRouteDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var editingRouteNumber by remember {
-        mutableStateOf<Int?>(null)
-    }
-
-    var routeName by remember {
-        mutableStateOf("")
-    }
-
-    var routeDifficulty by remember {
-        mutableStateOf("")
-    }
-
-    var routeStatus by remember {
-        mutableStateOf<RouteStatus?>(null)
-    }
-
-    val displayedRoutes = routes
-        .filter { route ->
-            filterStatus == null || route.status == filterStatus
-        }
-        .let { filteredRoutes ->
-            when (sortMode) {
-                SortMode.NUMBER -> {
-                    filteredRoutes.sortedBy { it.number }
-                }
-
-                SortMode.STATUS -> {
-                    filteredRoutes.sortedWith(
-                        compareBy<ClimbingRoute> {
-                            statusOrder(it.status)
-                        }.thenBy {
-                            it.number
-                        }
-                    )
-                }
-            }
-        }
+    var showRouteDialog by remember { mutableStateOf(false) }
+    var editingRouteIndex by remember { mutableStateOf<Int?>(null) }
+    var routeName by remember { mutableStateOf("") }
+    var routeDifficulty by remember { mutableStateOf("") }
+    var routeStatus by remember { mutableStateOf<RouteStatus?>(null) }
 
     Scaffold(
         topBar = {
@@ -172,13 +113,10 @@ fun TicklistHomeScreen() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(
-                        horizontal = 12.dp,
-                        vertical = 8.dp
-                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "${displayedRoutes.size} von ${routes.size} Routen",
+                    text = "${routes.size} Routen",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
@@ -186,164 +124,19 @@ fun TicklistHomeScreen() {
                     text = "Status 2 Sekunden gedrückt halten",
                     style = MaterialTheme.typography.bodySmall
                 )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box {
-                        OutlinedButton(
-                            onClick = {
-                                showSortMenu = true
-                            },
-                            contentPadding = PaddingValues(
-                                horizontal = 8.dp,
-                                vertical = 2.dp
-                            )
-                        ) {
-                            Text(
-                                text = "Sortierung: ${
-                                    if (sortMode == SortMode.NUMBER) {
-                                        "Nummer"
-                                    } else {
-                                        "Status"
-                                    }
-                                }",
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = {
-                                showSortMenu = false
-                            }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Nach Nummer")
-                                },
-                                onClick = {
-                                    sortMode = SortMode.NUMBER
-                                    showSortMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Nach Status")
-                                },
-                                onClick = {
-                                    sortMode = SortMode.STATUS
-                                    showSortMenu = false
-                                }
-                            )
-                        }
-                    }
-
-                    Box {
-                        OutlinedButton(
-                            onClick = {
-                                showFilterMenu = true
-                            },
-                            contentPadding = PaddingValues(
-                                horizontal = 8.dp,
-                                vertical = 2.dp
-                            )
-                        ) {
-                            Text(
-                                text = "Filter: ${
-                                    filterStatus?.let { statusText(it) }
-                                        ?: "Alle"
-                                }",
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showFilterMenu,
-                            onDismissRequest = {
-                                showFilterMenu = false
-                            }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Alle")
-                                },
-                                onClick = {
-                                    filterStatus = null
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Ohne Status")
-                                },
-                                onClick = {
-                                    filterStatus = null
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Flash")
-                                },
-                                onClick = {
-                                    filterStatus = RouteStatus.FLASH
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Top")
-                                },
-                                onClick = {
-                                    filterStatus = RouteStatus.TOP
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Zone")
-                                },
-                                onClick = {
-                                    filterStatus = RouteStatus.ZONE
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Projekt")
-                                },
-                                onClick = {
-                                    filterStatus = RouteStatus.PROJECT
-                                    showFilterMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
             }
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    editingRouteNumber = null
+                    editingRouteIndex = null
                     routeName = ""
                     routeDifficulty = ""
                     routeStatus = null
                     showRouteDialog = true
                 }
             ) {
-                Text(
-                    text = "+",
-                    fontSize = 24.sp
-                )
+                Text("+", fontSize = 24.sp)
             }
         }
     ) { innerPadding ->
@@ -364,31 +157,21 @@ fun TicklistHomeScreen() {
                 ),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(displayedRoutes) { route ->
+                itemsIndexed(routes) { index, route ->
                     RouteRow(
                         route = route,
                         onStatusChange = { newStatus ->
-                            val index = routes.indexOfFirst {
-                                it.number == route.number
-                            }
-
-                            if (index >= 0) {
-                                routes[index] = route.copy(
-                                    status = newStatus
-                                )
-                            }
+                            routes[index] = route.copy(status = newStatus)
                         },
                         onEdit = {
-                            editingRouteNumber = route.number
+                            editingRouteIndex = index
                             routeName = route.name
                             routeDifficulty = route.difficulty
                             routeStatus = route.status
                             showRouteDialog = true
                         },
                         onDelete = {
-                            routes.removeAll {
-                                it.number == route.number
-                            }
+                            routes.removeAt(index)
                         }
                     )
                 }
@@ -398,7 +181,7 @@ fun TicklistHomeScreen() {
 
     if (showRouteDialog) {
         RouteDialog(
-            title = if (editingRouteNumber == null) {
+            title = if (editingRouteIndex == null) {
                 "Route hinzufügen"
             } else {
                 "Route bearbeiten"
@@ -417,13 +200,13 @@ fun TicklistHomeScreen() {
             },
             onDismiss = {
                 showRouteDialog = false
-                editingRouteNumber = null
+                editingRouteIndex = null
             },
             onSave = {
                 if (routeName.isNotBlank()) {
-                    val number = editingRouteNumber
+                    val index = editingRouteIndex
 
-                    if (number == null) {
+                    if (index == null) {
                         val nextNumber =
                             if (routes.isEmpty()) {
                                 1
@@ -440,21 +223,15 @@ fun TicklistHomeScreen() {
                             )
                         )
                     } else {
-                        val index = routes.indexOfFirst {
-                            it.number == number
-                        }
-
-                        if (index >= 0) {
-                            routes[index] = routes[index].copy(
-                                name = routeName,
-                                difficulty = routeDifficulty,
-                                status = routeStatus
-                            )
-                        }
+                        routes[index] = routes[index].copy(
+                            name = routeName,
+                            difficulty = routeDifficulty,
+                            status = routeStatus
+                        )
                     }
 
                     showRouteDialog = false
-                    editingRouteNumber = null
+                    editingRouteIndex = null
                 }
             }
         )
@@ -562,10 +339,7 @@ fun RouteTableHeader() {
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(
-                horizontal = 6.dp,
-                vertical = 4.dp
-            ),
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -614,10 +388,7 @@ fun RouteRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(
-                    horizontal = 6.dp,
-                    vertical = 6.dp
-                ),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
@@ -872,24 +643,5 @@ fun BorderProgress(
                 paint
             )
         }
-    }
-}
-
-fun statusOrder(status: RouteStatus?): Int {
-    return when (status) {
-        null -> 0
-        RouteStatus.PROJECT -> 1
-        RouteStatus.ZONE -> 2
-        RouteStatus.TOP -> 3
-        RouteStatus.FLASH -> 4
-    }
-}
-
-fun statusText(status: RouteStatus): String {
-    return when (status) {
-        RouteStatus.FLASH -> "Flash"
-        RouteStatus.TOP -> "Top"
-        RouteStatus.ZONE -> "Zone"
-        RouteStatus.PROJECT -> "Projekt"
     }
 }
