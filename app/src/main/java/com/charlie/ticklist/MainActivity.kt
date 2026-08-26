@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
@@ -75,7 +77,6 @@ enum class SortMode {
 }
 
 enum class StatusFilter {
-    ALL,
     NONE,
     FLASH,
     TOP,
@@ -111,23 +112,27 @@ fun TicklistHomeScreen() {
         .observeAllRoutes()
         .collectAsState(initial = emptyList())
 
+    val allFilters = setOf(
+        StatusFilter.NONE,
+        StatusFilter.FLASH,
+        StatusFilter.TOP,
+        StatusFilter.ZONE,
+        StatusFilter.PROJECT
+    )
+
+    var selectedFilters by remember {
+        mutableStateOf(allFilters)
+    }
+
     var sortMode by remember {
         mutableStateOf(SortMode.NUMBER)
     }
 
-    var statusFilter by remember {
-        mutableStateOf(StatusFilter.ALL)
-    }
-
-    var hideCompleted by remember {
+    var showFilterMenu by remember {
         mutableStateOf(false)
     }
 
     var showSortMenu by remember {
-        mutableStateOf(false)
-    }
-
-    var showFilterMenu by remember {
         mutableStateOf(false)
     }
 
@@ -172,19 +177,16 @@ fun TicklistHomeScreen() {
 
     val displayedRoutes = routes
         .filter { route ->
-            val matchesStatus = when (statusFilter) {
-                StatusFilter.ALL -> true
-                StatusFilter.NONE -> route.status == null
-                StatusFilter.FLASH -> route.status == "FLASH"
-                StatusFilter.TOP -> route.status == "TOP"
-                StatusFilter.ZONE -> route.status == "ZONE"
-                StatusFilter.PROJECT -> route.status == "PROJECT"
+            val routeFilter = when (route.status) {
+                null -> StatusFilter.NONE
+                "FLASH" -> StatusFilter.FLASH
+                "TOP" -> StatusFilter.TOP
+                "ZONE" -> StatusFilter.ZONE
+                "PROJECT" -> StatusFilter.PROJECT
+                else -> null
             }
 
-            val matchesCompletedFilter =
-                !hideCompleted || route.status == null
-
-            matchesStatus && matchesCompletedFilter
+            routeFilter != null && routeFilter in selectedFilters
         }
         .let { filteredRoutes ->
             when (sortMode) {
@@ -236,7 +238,8 @@ fun TicklistHomeScreen() {
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box {
                         OutlinedButton(
@@ -297,103 +300,22 @@ fun TicklistHomeScreen() {
                             )
                         ) {
                             Text(
-                                text = "Filter: ${filterText(statusFilter)}",
+                                text = "Filter",
                                 fontSize = 11.sp
                             )
                         }
 
-                        DropdownMenu(
+                        FilterMenu(
                             expanded = showFilterMenu,
-                            onDismissRequest = {
+                            selectedFilters = selectedFilters,
+                            allFilters = allFilters,
+                            onDismiss = {
                                 showFilterMenu = false
+                            },
+                            onFiltersChanged = {
+                                selectedFilters = it
                             }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Alle")
-                                },
-                                onClick = {
-                                    statusFilter = StatusFilter.ALL
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Ohne Status")
-                                },
-                                onClick = {
-                                    statusFilter = StatusFilter.NONE
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Flash")
-                                },
-                                onClick = {
-                                    statusFilter = StatusFilter.FLASH
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Top")
-                                },
-                                onClick = {
-                                    statusFilter = StatusFilter.TOP
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Zone")
-                                },
-                                onClick = {
-                                    statusFilter = StatusFilter.ZONE
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Projekt")
-                                },
-                                onClick = {
-                                    statusFilter = StatusFilter.PROJECT
-                                    showFilterMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (hideCompleted) {
-                                            "Geschaffte ausblenden: Ein"
-                                        } else {
-                                            "Geschaffte ausblenden: Aus"
-                                        }
-                                    )
-                                },
-                                onClick = {
-                                    hideCompleted = !hideCompleted
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Filter zurücksetzen")
-                                },
-                                onClick = {
-                                    statusFilter = StatusFilter.ALL
-                                    hideCompleted = false
-                                    showFilterMenu = false
-                                }
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -402,7 +324,8 @@ fun TicklistHomeScreen() {
             CalculationBar(
                 topCount = topCount,
                 flashCount = flashCount,
-                zoneCount = zoneCount
+                zoneCount = zoneCount,
+                modifier = Modifier.navigationBarsPadding()
             )
         },
         floatingActionButton = {
@@ -598,6 +521,130 @@ fun TicklistHomeScreen() {
 }
 
 @Composable
+fun FilterMenu(
+    expanded: Boolean,
+    selectedFilters: Set<StatusFilter>,
+    allFilters: Set<StatusFilter>,
+    onDismiss: () -> Unit,
+    onFiltersChanged: (Set<StatusFilter>) -> Unit
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss
+    ) {
+        FilterCheckboxItem(
+            label = "Flash",
+            checked = StatusFilter.FLASH in selectedFilters
+        ) {
+            onFiltersChanged(
+                selectedFilters.toggle(StatusFilter.FLASH)
+            )
+        }
+
+        FilterCheckboxItem(
+            label = "Top",
+            checked = StatusFilter.TOP in selectedFilters
+        ) {
+            onFiltersChanged(
+                selectedFilters.toggle(StatusFilter.TOP)
+            )
+        }
+
+        FilterCheckboxItem(
+            label = "Zone",
+            checked = StatusFilter.ZONE in selectedFilters
+        ) {
+            onFiltersChanged(
+                selectedFilters.toggle(StatusFilter.ZONE)
+            )
+        }
+
+        FilterCheckboxItem(
+            label = "Projekt",
+            checked = StatusFilter.PROJECT in selectedFilters
+        ) {
+            onFiltersChanged(
+                selectedFilters.toggle(StatusFilter.PROJECT)
+            )
+        }
+
+        FilterCheckboxItem(
+            label = "Ohne",
+            checked = StatusFilter.NONE in selectedFilters
+        ) {
+            onFiltersChanged(
+                selectedFilters.toggle(StatusFilter.NONE)
+            )
+        }
+
+        DropdownMenuItem(
+            text = {
+                Text("Alle")
+            },
+            onClick = {
+                onFiltersChanged(allFilters)
+            }
+        )
+
+        DropdownMenuItem(
+            text = {
+                Text("Keine")
+            },
+            onClick = {
+                onFiltersChanged(emptySet())
+            }
+        )
+
+        DropdownMenuItem(
+            text = {
+                Text("Geschaffte aus")
+            },
+            onClick = {
+                onFiltersChanged(
+                    setOf(
+                        StatusFilter.NONE,
+                        StatusFilter.ZONE,
+                        StatusFilter.PROJECT
+                    )
+                )
+            }
+        )
+    }
+}
+
+@Composable
+fun FilterCheckboxItem(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: () -> Unit
+) {
+    DropdownMenuItem(
+        text = {
+            Text(label)
+        },
+        onClick = onCheckedChange,
+        leadingIcon = {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = {
+                    onCheckedChange()
+                }
+            )
+        }
+    )
+}
+
+fun Set<StatusFilter>.toggle(
+    filter: StatusFilter
+): Set<StatusFilter> {
+    return if (filter in this) {
+        this - filter
+    } else {
+        this + filter
+    }
+}
+
+@Composable
 fun RouteDialog(
     title: String,
     routeName: String,
@@ -703,10 +750,11 @@ fun RouteDialog(
 fun CalculationBar(
     topCount: Int,
     flashCount: Int,
-    zoneCount: Int
+    zoneCount: Int,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(6.dp)
     ) {
@@ -942,7 +990,6 @@ fun StatusButton(
                     detectTapGestures(
                         onPress = {
                             coroutineScope {
-                                var released = false
                                 var completed = false
 
                                 progress.snapTo(0f)
@@ -961,18 +1008,16 @@ fun StatusButton(
                                     completed = true
                                 }
 
-                                released = tryAwaitRelease()
+                                val released =
+                                    tryAwaitRelease()
 
                                 if (completed && released) {
                                     onComplete()
+                                    progress.snapTo(0f)
                                 } else {
                                     animationJob.cancel()
                                     progress.snapTo(0f)
                                     onProgress(0f)
-                                }
-
-                                if (completed) {
-                                    progress.snapTo(0f)
                                 }
                             }
                         }
@@ -1042,16 +1087,5 @@ fun statusOrder(status: String?): Int {
         "TOP" -> 3
         "FLASH" -> 4
         else -> 5
-    }
-}
-
-fun filterText(filter: StatusFilter): String {
-    return when (filter) {
-        StatusFilter.ALL -> "Alle"
-        StatusFilter.NONE -> "Ohne Status"
-        StatusFilter.FLASH -> "Flash"
-        StatusFilter.TOP -> "Top"
-        StatusFilter.ZONE -> "Zone"
-        StatusFilter.PROJECT -> "Projekt"
     }
 }
