@@ -14,6 +14,9 @@ interface RouteDao {
     @Query("SELECT * FROM routes ORDER BY number ASC")
     fun observeAllRoutes(): Flow<List<RouteEntity>>
 
+    @Query("SELECT * FROM routes WHERE number = :number LIMIT 1")
+    suspend fun getRoute(number: Int): RouteEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRoute(route: RouteEntity)
 
@@ -22,6 +25,26 @@ interface RouteDao {
 
     @Update
     suspend fun updateRoute(route: RouteEntity)
+
+    @Query(
+        """
+        UPDATE routes
+        SET name = :name,
+            difficulty = :difficulty,
+            status = :status,
+            statusChangedAt = :statusChangedAt,
+            completedDate = :completedDate
+        WHERE number = :number
+        """
+    )
+    suspend fun updateRouteWithDates(
+        number: Int,
+        name: String,
+        difficulty: String,
+        status: String?,
+        statusChangedAt: Long?,
+        completedDate: Long?
+    )
 
     @Delete
     suspend fun deleteRoute(route: RouteEntity)

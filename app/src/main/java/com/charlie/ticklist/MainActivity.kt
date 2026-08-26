@@ -1,5 +1,7 @@
 package com.charlie.ticklist
 
+import android.app.DatePickerDialog
+import android.content.Context
 import android.graphics.Paint
 import android.graphics.Path as AndroidPath
 import android.graphics.PathMeasure
@@ -63,35 +65,20 @@ import com.charlie.ticklist.data.TicklistDatabase
 import com.charlie.ticklist.ui.theme.TicklistClimbingTheme
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
-enum class RouteStatus {
-    FLASH,
-    TOP,
-    ZONE,
-    PROJECT
-}
+enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
 
-enum class StatusFilter {
-    NONE,
-    FLASH,
-    TOP,
-    ZONE,
-    PROJECT
-}
+enum class StatusFilter { NONE, FLASH, TOP, ZONE, PROJECT }
 
-enum class SortColumn {
-    ROUTE,
-    FLASH,
-    TOP,
-    ZONE,
-    PROJECT
-}
+enum class SortColumn { ROUTE, FLASH, TOP, ZONE, PROJECT }
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContent {
             TicklistClimbingTheme {
                 TicklistHomeScreen()
@@ -103,18 +90,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TicklistHomeScreen() {
     val context = LocalContext.current
-
-    val database = remember {
-        TicklistDatabase.getDatabase(context)
-    }
-
+    val database = remember { TicklistDatabase.getDatabase(context) }
     val routeDao = database.routeDao()
     val scope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
-
-    val routes by routeDao
-        .observeAllRoutes()
-        .collectAsState(initial = emptyList())
+    val routes by routeDao.observeAllRoutes().collectAsState(initial = emptyList())
 
     val allFilters = setOf(
         StatusFilter.NONE,
@@ -124,45 +104,19 @@ fun TicklistHomeScreen() {
         StatusFilter.PROJECT
     )
 
-    var selectedFilters by remember {
-        mutableStateOf(allFilters)
-    }
+    var selectedFilters by remember { mutableStateOf(allFilters) }
+    var sortColumn by remember { mutableStateOf(SortColumn.ROUTE) }
+    var sortAscending by remember { mutableStateOf(true) }
+    var showFilterMenu by remember { mutableStateOf(false) }
+    var showRouteDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
-    var sortColumn by remember {
-        mutableStateOf(SortColumn.ROUTE)
-    }
-
-    var sortAscending by remember {
-        mutableStateOf(true)
-    }
-
-    var showFilterMenu by remember {
-        mutableStateOf(false)
-    }
-
-    var showRouteDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showDeleteDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var editingRouteNumber by remember {
-        mutableStateOf<Int?>(null)
-    }
-
-    var routeName by remember {
-        mutableStateOf("")
-    }
-
-    var routeDifficulty by remember {
-        mutableStateOf("")
-    }
-
-    var routeStatus by remember {
-        mutableStateOf<RouteStatus?>(null)
-    }
+    var editingRouteNumber by remember { mutableStateOf<Int?>(null) }
+    var routeName by remember { mutableStateOf("") }
+    var routeDifficulty by remember { mutableStateOf("") }
+    var routeStatus by remember { mutableStateOf<RouteStatus?>(null) }
+    var routeStatusChangedAt by remember { mutableStateOf<Long?>(null) }
+    var routeCompletedDate by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(Unit) {
         if (routeDao.countRoutes() == 0) {
@@ -172,7 +126,9 @@ fun TicklistHomeScreen() {
                         number = number,
                         name = "%02d".format(number),
                         difficulty = "",
-                        status = null
+                        status = null,
+                        statusChangedAt = null,
+                        completedDate = null
                     )
                 }
             )
@@ -180,28 +136,33 @@ fun TicklistHomeScreen() {
     }
 
     val displayedRoutes = routes
-        .filter { route ->
-            val filter = routeFilter(route.status)
-
-            filter != null && filter in selectedFilters
+        .filter {
+            routeFilter(it.status)?.let { filter ->
+                filter in selectedFilters
+            } == true
         }
-        .sortedWith(
-            routeComparator(
-                column = sortColumn,
-                ascending = sortAscending
-            )
-        )
+        .sortedWith(routeComparator(sortColumn, sortAscending))
 
     val topCount = routes.count {
         it.status == "TOP" || it.status == "FLASH"
     }
+    val flashCount = routes.count { it.status == "FLASH" }
+    val zoneCount = routes.count { it.status == "ZONE" }
 
-    val flashCount = routes.count {
-        it.status == "FLASH"
-    }
+    fun openRoute(route: RouteEntity) {
+        scope.launch {
+            val currentRoute = routeDao.getRoute(route.number) ?: route
 
-    val zoneCount = routes.count {
-        it.status == "ZONE"
+            editingRouteNumber = currentRoute.number
+            routeName = currentRoute.name
+            routeDifficulty = currentRoute.difficulty
+            routeStatus = currentRoute.status?.let {
+                runCatching { RouteStatus.valueOf(it) }.getOrNull()
+            }
+            routeStatusChangedAt = currentRoute.statusChangedAt
+            routeCompletedDate = currentRoute.completedDate
+            showRouteDialog = true
+        }
     }
 
     Scaffold(
@@ -210,10 +171,7 @@ fun TicklistHomeScreen() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(
-                        horizontal = 12.dp,
-                        vertical = 8.dp
-                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = "${displayedRoutes.size} von ${routes.size} Routen",
@@ -225,39 +183,24 @@ fun TicklistHomeScreen() {
                     style = MaterialTheme.typography.bodySmall
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box {
-                        OutlinedButton(
-                            onClick = {
-                                showFilterMenu = true
-                            },
-                            contentPadding = PaddingValues(
-                                horizontal = 10.dp,
-                                vertical = 2.dp
-                            )
-                        ) {
-                            Text(
-                                text = "Filter",
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        FilterMenu(
-                            expanded = showFilterMenu,
-                            selectedFilters = selectedFilters,
-                            allFilters = allFilters,
-                            onDismiss = {
-                                showFilterMenu = false
-                            },
-                            onFiltersChanged = {
-                                selectedFilters = it
-                            }
+                Box {
+                    OutlinedButton(
+                        onClick = { showFilterMenu = true },
+                        contentPadding = PaddingValues(
+                            horizontal = 10.dp,
+                            vertical = 2.dp
                         )
+                    ) {
+                        Text("Filter", fontSize = 11.sp)
                     }
+
+                    FilterMenu(
+                        expanded = showFilterMenu,
+                        selectedFilters = selectedFilters,
+                        allFilters = allFilters,
+                        onDismiss = { showFilterMenu = false },
+                        onFiltersChanged = { selectedFilters = it }
+                    )
                 }
             }
         },
@@ -276,17 +219,15 @@ fun TicklistHomeScreen() {
                     routeName = ""
                     routeDifficulty = ""
                     routeStatus = null
+                    routeStatusChangedAt = null
+                    routeCompletedDate = null
                     showRouteDialog = true
                 }
             ) {
-                Text(
-                    text = "+",
-                    fontSize = 24.sp
-                )
+                Text("+", fontSize = 24.sp)
             }
         }
     ) { innerPadding ->
-
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -317,15 +258,28 @@ fun TicklistHomeScreen() {
                 items = displayedRoutes,
                 key = { it.number }
             ) { route ->
-
                 RouteRow(
                     route = route,
                     onStatusChange = { newStatus ->
+                        val now = System.currentTimeMillis()
+                        val newCompletedDate =
+                            if (
+                                newStatus == RouteStatus.TOP ||
+                                newStatus == RouteStatus.FLASH
+                            ) {
+                                route.completedDate ?: now
+                            } else {
+                                null
+                            }
+
                         scope.launch {
-                            routeDao.updateRoute(
-                                route.copy(
-                                    status = newStatus.name
-                                )
+                            routeDao.updateRouteWithDates(
+                                number = route.number,
+                                name = route.name,
+                                difficulty = route.difficulty,
+                                status = newStatus.name,
+                                statusChangedAt = now,
+                                completedDate = newCompletedDate
                             )
 
                             hapticFeedback.performHapticFeedback(
@@ -334,15 +288,7 @@ fun TicklistHomeScreen() {
                         }
                     },
                     onEdit = {
-                        editingRouteNumber = route.number
-                        routeName = route.name
-                        routeDifficulty = route.difficulty
-                        routeStatus = route.status?.let {
-                            runCatching {
-                                RouteStatus.valueOf(it)
-                            }.getOrNull()
-                        }
-                        showRouteDialog = true
+                        openRoute(route)
                     }
                 )
             }
@@ -351,6 +297,7 @@ fun TicklistHomeScreen() {
 
     if (showRouteDialog) {
         RouteDialog(
+            context = context,
             title = if (editingRouteNumber == null) {
                 "Route hinzufügen"
             } else {
@@ -359,19 +306,14 @@ fun TicklistHomeScreen() {
             routeName = routeName,
             routeDifficulty = routeDifficulty,
             routeStatus = routeStatus,
-            onNameChange = {
-                routeName = it
-            },
-            onDifficultyChange = {
-                routeDifficulty = it
-            },
-            onStatusChange = {
-                routeStatus = it
-            },
+            statusChangedAt = routeStatusChangedAt,
+            completedDate = routeCompletedDate,
+            onNameChange = { routeName = it },
+            onDifficultyChange = { routeDifficulty = it },
+            onStatusChange = { routeStatus = it },
+            onCompletedDateChange = { routeCompletedDate = it },
             onDelete = if (editingRouteNumber != null) {
-                {
-                    showDeleteDialog = true
-                }
+                { showDeleteDialog = true }
             } else {
                 null
             },
@@ -383,33 +325,45 @@ fun TicklistHomeScreen() {
                 if (routeName.isNotBlank()) {
                     scope.launch {
                         val number = editingRouteNumber
+                        val now = System.currentTimeMillis()
+                        val existingRoute = routes.firstOrNull {
+                            it.number == number
+                        }
+
+                        val savedStatusChangedAt =
+                            existingRoute?.statusChangedAt
+                                ?: routeStatusChangedAt
+                                ?: now
+
+                        val savedCompletedDate =
+                            if (
+                                routeStatus == RouteStatus.TOP ||
+                                routeStatus == RouteStatus.FLASH
+                            ) {
+                                routeCompletedDate
+                            } else {
+                                null
+                            }
 
                         if (number == null) {
-                            val nextNumber =
-                                if (routes.isEmpty()) {
-                                    1
-                                } else {
-                                    routes.maxOf {
-                                        it.number
-                                    } + 1
-                                }
-
                             routeDao.insertRoute(
                                 RouteEntity(
-                                    number = nextNumber,
+                                    number = routes.nextRouteNumber(),
                                     name = routeName,
                                     difficulty = routeDifficulty,
-                                    status = routeStatus?.name
+                                    status = routeStatus?.name,
+                                    statusChangedAt = savedStatusChangedAt,
+                                    completedDate = savedCompletedDate
                                 )
                             )
                         } else {
-                            routeDao.updateRoute(
-                                RouteEntity(
-                                    number = number,
-                                    name = routeName,
-                                    difficulty = routeDifficulty,
-                                    status = routeStatus?.name
-                                )
+                            routeDao.updateRouteWithDates(
+                                number = number,
+                                name = routeName,
+                                difficulty = routeDifficulty,
+                                status = routeStatus?.name,
+                                statusChangedAt = savedStatusChangedAt,
+                                completedDate = savedCompletedDate
                             )
                         }
 
@@ -423,16 +377,10 @@ fun TicklistHomeScreen() {
 
     if (showDeleteDialog) {
         AlertDialog(
-            onDismissRequest = {
-                showDeleteDialog = false
-            },
-            title = {
-                Text("Route löschen?")
-            },
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Route löschen?") },
             text = {
-                Text(
-                    "Diese Route wird dauerhaft aus der lokalen Datenbank gelöscht."
-                )
+                Text("Diese Route wird dauerhaft aus der lokalen Datenbank gelöscht.")
             },
             confirmButton = {
                 Button(
@@ -440,11 +388,9 @@ fun TicklistHomeScreen() {
                         val number = editingRouteNumber
 
                         if (number != null) {
-                            val route = routes.firstOrNull {
+                            routes.firstOrNull {
                                 it.number == number
-                            }
-
-                            if (route != null) {
+                            }?.let { route ->
                                 scope.launch {
                                     routeDao.deleteRoute(route)
                                 }
@@ -461,9 +407,7 @@ fun TicklistHomeScreen() {
             },
             dismissButton = {
                 TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                    }
+                    onClick = { showDeleteDialog = false }
                 ) {
                     Text("Abbrechen")
                 }
@@ -484,73 +428,38 @@ fun FilterMenu(
         expanded = expanded,
         onDismissRequest = onDismiss
     ) {
-        FilterCheckboxItem(
-            label = "Flash",
-            checked = StatusFilter.FLASH in selectedFilters
-        ) {
-            onFiltersChanged(
-                selectedFilters.toggleFilter(StatusFilter.FLASH)
-            )
+        FilterCheckboxItem("Flash", StatusFilter.FLASH in selectedFilters) {
+            onFiltersChanged(selectedFilters.toggleFilter(StatusFilter.FLASH))
         }
 
-        FilterCheckboxItem(
-            label = "Top",
-            checked = StatusFilter.TOP in selectedFilters
-        ) {
-            onFiltersChanged(
-                selectedFilters.toggleFilter(StatusFilter.TOP)
-            )
+        FilterCheckboxItem("Top", StatusFilter.TOP in selectedFilters) {
+            onFiltersChanged(selectedFilters.toggleFilter(StatusFilter.TOP))
         }
 
-        FilterCheckboxItem(
-            label = "Zone",
-            checked = StatusFilter.ZONE in selectedFilters
-        ) {
-            onFiltersChanged(
-                selectedFilters.toggleFilter(StatusFilter.ZONE)
-            )
+        FilterCheckboxItem("Zone", StatusFilter.ZONE in selectedFilters) {
+            onFiltersChanged(selectedFilters.toggleFilter(StatusFilter.ZONE))
         }
 
-        FilterCheckboxItem(
-            label = "Projekt",
-            checked = StatusFilter.PROJECT in selectedFilters
-        ) {
-            onFiltersChanged(
-                selectedFilters.toggleFilter(StatusFilter.PROJECT)
-            )
+        FilterCheckboxItem("Projekt", StatusFilter.PROJECT in selectedFilters) {
+            onFiltersChanged(selectedFilters.toggleFilter(StatusFilter.PROJECT))
         }
 
-        FilterCheckboxItem(
-            label = "Ohne",
-            checked = StatusFilter.NONE in selectedFilters
-        ) {
-            onFiltersChanged(
-                selectedFilters.toggleFilter(StatusFilter.NONE)
-            )
+        FilterCheckboxItem("Ohne", StatusFilter.NONE in selectedFilters) {
+            onFiltersChanged(selectedFilters.toggleFilter(StatusFilter.NONE))
         }
 
         DropdownMenuItem(
-            text = {
-                Text("Alle")
-            },
-            onClick = {
-                onFiltersChanged(allFilters)
-            }
+            text = { Text("Alle") },
+            onClick = { onFiltersChanged(allFilters) }
         )
 
         DropdownMenuItem(
-            text = {
-                Text("Keine")
-            },
-            onClick = {
-                onFiltersChanged(emptySet())
-            }
+            text = { Text("Keine") },
+            onClick = { onFiltersChanged(emptySet()) }
         )
 
         DropdownMenuItem(
-            text = {
-                Text("Geschaffte aus")
-            },
+            text = { Text("Geschaffte aus") },
             onClick = {
                 onFiltersChanged(
                     setOf(
@@ -571,59 +480,45 @@ fun FilterCheckboxItem(
     onCheckedChange: () -> Unit
 ) {
     DropdownMenuItem(
-        text = {
-            Text(label)
-        },
+        text = { Text(label) },
         onClick = onCheckedChange,
         leadingIcon = {
             Checkbox(
                 checked = checked,
-                onCheckedChange = {
-                    onCheckedChange()
-                }
+                onCheckedChange = { onCheckedChange() }
             )
         }
     )
 }
 
-fun Set<StatusFilter>.toggleFilter(
-    filter: StatusFilter
-): Set<StatusFilter> {
-    return if (filter in this) {
-        this - filter
-    } else {
-        this + filter
-    }
-}
-
 @Composable
 fun RouteDialog(
+    context: Context,
     title: String,
     routeName: String,
     routeDifficulty: String,
     routeStatus: RouteStatus?,
+    statusChangedAt: Long?,
+    completedDate: Long?,
     onNameChange: (String) -> Unit,
     onDifficultyChange: (String) -> Unit,
     onStatusChange: (RouteStatus?) -> Unit,
+    onCompletedDateChange: (Long?) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(title)
-        },
+        title = { Text(title) },
         text = {
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
                     value = routeName,
                     onValueChange = onNameChange,
-                    label = {
-                        Text("Name oder Nummer")
-                    },
+                    label = { Text("Name oder Nummer") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -631,48 +526,97 @@ fun RouteDialog(
                 OutlinedTextField(
                     value = routeDifficulty,
                     onValueChange = onDifficultyChange,
-                    label = {
-                        Text("Schwierigkeit")
-                    },
+                    label = { Text("Schwierigkeit") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
 
-                Text("Status")
+                Text(
+                    text = "Status",
+                    style = MaterialTheme.typography.titleMedium
+                )
 
                 StatusSelectionButton(
-                    text = "Kein Status",
-                    selected = routeStatus == null
+                    "Kein Status",
+                    routeStatus == null
                 ) {
                     onStatusChange(null)
                 }
 
                 StatusSelectionButton(
-                    text = "Flash",
-                    selected = routeStatus == RouteStatus.FLASH
+                    "Flash",
+                    routeStatus == RouteStatus.FLASH
                 ) {
                     onStatusChange(RouteStatus.FLASH)
                 }
 
                 StatusSelectionButton(
-                    text = "Top",
-                    selected = routeStatus == RouteStatus.TOP
+                    "Top",
+                    routeStatus == RouteStatus.TOP
                 ) {
                     onStatusChange(RouteStatus.TOP)
                 }
 
                 StatusSelectionButton(
-                    text = "Zone",
-                    selected = routeStatus == RouteStatus.ZONE
+                    "Zone",
+                    routeStatus == RouteStatus.ZONE
                 ) {
                     onStatusChange(RouteStatus.ZONE)
                 }
 
                 StatusSelectionButton(
-                    text = "Projekt",
-                    selected = routeStatus == RouteStatus.PROJECT
+                    "Projekt",
+                    routeStatus == RouteStatus.PROJECT
                 ) {
                     onStatusChange(RouteStatus.PROJECT)
+                }
+
+                if (statusChangedAt != null) {
+                    Text(
+                        text = "Status eingetragen: ${formatDateTime(statusChangedAt)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                if (
+                    routeStatus == RouteStatus.TOP ||
+                    routeStatus == RouteStatus.FLASH
+                ) {
+                    Text(
+                        text = "Erfolgsdatum: ${
+                            completedDate?.let { formatDate(it) }
+                                ?: "nicht eingetragen"
+                        }",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+                            showDatePicker(
+                                context = context,
+                                currentDate = completedDate,
+                                onDateSelected = onCompletedDateChange
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (completedDate == null) {
+                                "Erfolgsdatum wählen"
+                            } else {
+                                "Erfolgsdatum ändern"
+                            }
+                        )
+                    }
+
+                    if (completedDate != null) {
+                        TextButton(
+                            onClick = { onCompletedDateChange(null) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Erfolgsdatum löschen")
+                        }
+                    }
                 }
 
                 if (onDelete != null) {
@@ -756,48 +700,48 @@ fun RouteTableHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SortHeader(
-            text = "Route",
-            column = SortColumn.ROUTE,
-            currentColumn = sortColumn,
-            ascending = sortAscending,
-            modifier = Modifier.weight(1.15f),
-            onClick = onSort
+            "Route",
+            SortColumn.ROUTE,
+            sortColumn,
+            sortAscending,
+            Modifier.weight(1.15f),
+            onSort
         )
 
         SortHeader(
-            text = "Flash",
-            column = SortColumn.FLASH,
-            currentColumn = sortColumn,
-            ascending = sortAscending,
-            modifier = Modifier.weight(1f),
-            onClick = onSort
+            "Flash",
+            SortColumn.FLASH,
+            sortColumn,
+            sortAscending,
+            Modifier.weight(1f),
+            onSort
         )
 
         SortHeader(
-            text = "Top",
-            column = SortColumn.TOP,
-            currentColumn = sortColumn,
-            ascending = sortAscending,
-            modifier = Modifier.weight(1f),
-            onClick = onSort
+            "Top",
+            SortColumn.TOP,
+            sortColumn,
+            sortAscending,
+            Modifier.weight(1f),
+            onSort
         )
 
         SortHeader(
-            text = "Zone",
-            column = SortColumn.ZONE,
-            currentColumn = sortColumn,
-            ascending = sortAscending,
-            modifier = Modifier.weight(1f),
-            onClick = onSort
+            "Zone",
+            SortColumn.ZONE,
+            sortColumn,
+            sortAscending,
+            Modifier.weight(1f),
+            onSort
         )
 
         SortHeader(
-            text = "Projekt",
-            column = SortColumn.PROJECT,
-            currentColumn = sortColumn,
-            ascending = sortAscending,
-            modifier = Modifier.weight(1f),
-            onClick = onSort
+            "Projekt",
+            SortColumn.PROJECT,
+            sortColumn,
+            sortAscending,
+            Modifier.weight(1f),
+            onSort
         )
     }
 }
@@ -812,14 +756,9 @@ fun SortHeader(
     onClick: (SortColumn) -> Unit
 ) {
     TextButton(
-        onClick = {
-            onClick(column)
-        },
+        onClick = { onClick(column) },
         modifier = modifier,
-        contentPadding = PaddingValues(
-            horizontal = 0.dp,
-            vertical = 0.dp
-        )
+        contentPadding = PaddingValues(0.dp)
     ) {
         val arrow = if (column == currentColumn) {
             if (ascending) " ↑" else " ↓"
@@ -863,9 +802,7 @@ fun RouteRow(
                         .weight(1.15f)
                         .pointerInput(route.number) {
                             detectTapGestures(
-                                onLongPress = {
-                                    onEdit()
-                                }
+                                onLongPress = { onEdit() }
                             )
                         }
                 ) {
@@ -885,52 +822,44 @@ fun RouteRow(
                 }
 
                 StatusButton(
-                    label = "Flash",
-                    selected = route.status == "FLASH",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
+                    "Flash",
+                    route.status == "FLASH",
+                    Modifier.weight(1f),
+                    { rowProgress = it },
+                    {
                         rowProgress = 0f
                         onStatusChange(RouteStatus.FLASH)
                     }
                 )
 
                 StatusButton(
-                    label = "Top",
-                    selected = route.status == "TOP",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
+                    "Top",
+                    route.status == "TOP",
+                    Modifier.weight(1f),
+                    { rowProgress = it },
+                    {
                         rowProgress = 0f
                         onStatusChange(RouteStatus.TOP)
                     }
                 )
 
                 StatusButton(
-                    label = "Zone",
-                    selected = route.status == "ZONE",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
+                    "Zone",
+                    route.status == "ZONE",
+                    Modifier.weight(1f),
+                    { rowProgress = it },
+                    {
                         rowProgress = 0f
                         onStatusChange(RouteStatus.ZONE)
                     }
                 )
 
                 StatusButton(
-                    label = "Projekt",
-                    selected = route.status == "PROJECT",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
+                    "Projekt",
+                    route.status == "PROJECT",
+                    Modifier.weight(1f),
+                    { rowProgress = it },
+                    {
                         rowProgress = 0f
                         onStatusChange(RouteStatus.PROJECT)
                     }
@@ -955,9 +884,7 @@ fun StatusButton(
     onProgress: (Float) -> Unit,
     onComplete: () -> Unit
 ) {
-    val progress = remember {
-        Animatable(0f)
-    }
+    val progress = remember { Animatable(0f) }
 
     Box(
         modifier = modifier
@@ -1008,9 +935,7 @@ fun StatusButton(
                                 val animationJob = launch {
                                     progress.animateTo(
                                         targetValue = 1f,
-                                        animationSpec = tween(
-                                            durationMillis = 1500
-                                        )
+                                        animationSpec = tween(1500)
                                     ) {
                                         onProgress(value)
                                     }
@@ -1048,7 +973,6 @@ fun BorderProgress(
     ) {
         val strokeWidth = 4.dp.toPx()
         val radius = 12.dp.toPx()
-
         val path = AndroidPath()
 
         path.addRoundRect(
@@ -1080,10 +1004,7 @@ fun BorderProgress(
         paint.color = color.toArgb()
 
         drawIntoCanvas { canvas ->
-            canvas.nativeCanvas.drawPath(
-                progressPath,
-                paint
-            )
+            canvas.nativeCanvas.drawPath(progressPath, paint)
         }
     }
 }
@@ -1104,48 +1025,84 @@ fun routeComparator(
     ascending: Boolean
 ): Comparator<RouteEntity> {
     val comparator = when (column) {
-        SortColumn.ROUTE -> {
-            compareBy<RouteEntity> {
-                it.number
-            }
-        }
+        SortColumn.ROUTE -> compareBy { it.number }
 
-        SortColumn.FLASH -> {
-            compareByDescending<RouteEntity> {
-                it.status == "FLASH"
-            }.thenBy {
-                it.number
-            }
-        }
+        SortColumn.FLASH -> compareByDescending<RouteEntity> {
+            it.status == "FLASH"
+        }.thenBy { it.number }
 
-        SortColumn.TOP -> {
-            compareByDescending<RouteEntity> {
-                it.status == "TOP"
-            }.thenBy {
-                it.number
-            }
-        }
+        SortColumn.TOP -> compareByDescending<RouteEntity> {
+            it.status == "TOP"
+        }.thenBy { it.number }
 
-        SortColumn.ZONE -> {
-            compareByDescending<RouteEntity> {
-                it.status == "ZONE"
-            }.thenBy {
-                it.number
-            }
-        }
+        SortColumn.ZONE -> compareByDescending<RouteEntity> {
+            it.status == "ZONE"
+        }.thenBy { it.number }
 
-        SortColumn.PROJECT -> {
-            compareByDescending<RouteEntity> {
-                it.status == "PROJECT"
-            }.thenBy {
-                it.number
-            }
-        }
+        SortColumn.PROJECT -> compareByDescending<RouteEntity> {
+            it.status == "PROJECT"
+        }.thenBy { it.number }
     }
 
-    return if (ascending) {
-        comparator
+    return if (ascending) comparator else comparator.reversed()
+}
+
+fun Set<StatusFilter>.toggleFilter(
+    filter: StatusFilter
+): Set<StatusFilter> {
+    return if (filter in this) {
+        this - filter
     } else {
-        comparator.reversed()
+        this + filter
     }
+}
+
+fun List<RouteEntity>.nextRouteNumber(): Int {
+    return if (isEmpty()) 1 else maxOf { it.number } + 1
+}
+
+fun formatDate(timestamp: Long): String {
+    return SimpleDateFormat(
+        "dd.MM.yyyy",
+        Locale.getDefault()
+    ).format(Date(timestamp))
+}
+
+fun formatDateTime(timestamp: Long): String {
+    return SimpleDateFormat(
+        "dd.MM.yyyy, HH:mm",
+        Locale.getDefault()
+    ).format(Date(timestamp))
+}
+
+fun showDatePicker(
+    context: Context,
+    currentDate: Long?,
+    onDateSelected: (Long?) -> Unit
+) {
+    val calendar = Calendar.getInstance()
+
+    if (currentDate != null) {
+        calendar.timeInMillis = currentDate
+    }
+
+    DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            val selectedDate = Calendar.getInstance().apply {
+                set(Calendar.YEAR, year)
+                set(Calendar.MONTH, month)
+                set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                set(Calendar.HOUR_OF_DAY, 12)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+            onDateSelected(selectedDate.timeInMillis)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    ).show()
 }
