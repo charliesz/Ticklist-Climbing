@@ -71,13 +71,16 @@ enum class RouteStatus {
     PROJECT
 }
 
-enum class SortMode {
-    NUMBER,
-    STATUS
-}
-
 enum class StatusFilter {
     NONE,
+    FLASH,
+    TOP,
+    ZONE,
+    PROJECT
+}
+
+enum class SortColumn {
+    ROUTE,
     FLASH,
     TOP,
     ZONE,
@@ -100,6 +103,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TicklistHomeScreen() {
     val context = LocalContext.current
+
     val database = remember {
         TicklistDatabase.getDatabase(context)
     }
@@ -124,15 +128,15 @@ fun TicklistHomeScreen() {
         mutableStateOf(allFilters)
     }
 
-    var sortMode by remember {
-        mutableStateOf(SortMode.NUMBER)
+    var sortColumn by remember {
+        mutableStateOf(SortColumn.ROUTE)
+    }
+
+    var sortAscending by remember {
+        mutableStateOf(true)
     }
 
     var showFilterMenu by remember {
-        mutableStateOf(false)
-    }
-
-    var showSortMenu by remember {
         mutableStateOf(false)
     }
 
@@ -177,34 +181,16 @@ fun TicklistHomeScreen() {
 
     val displayedRoutes = routes
         .filter { route ->
-            val routeFilter = when (route.status) {
-                null -> StatusFilter.NONE
-                "FLASH" -> StatusFilter.FLASH
-                "TOP" -> StatusFilter.TOP
-                "ZONE" -> StatusFilter.ZONE
-                "PROJECT" -> StatusFilter.PROJECT
-                else -> null
-            }
+            val filter = routeFilter(route.status)
 
-            routeFilter != null && routeFilter in selectedFilters
+            filter != null && filter in selectedFilters
         }
-        .let { filteredRoutes ->
-            when (sortMode) {
-                SortMode.NUMBER -> {
-                    filteredRoutes.sortedBy { it.number }
-                }
-
-                SortMode.STATUS -> {
-                    filteredRoutes.sortedWith(
-                        compareBy<RouteEntity> {
-                            statusOrder(it.status)
-                        }.thenBy {
-                            it.number
-                        }
-                    )
-                }
-            }
-        }
+        .sortedWith(
+            routeComparator(
+                column = sortColumn,
+                ascending = sortAscending
+            )
+        )
 
     val topCount = routes.count {
         it.status == "TOP" || it.status == "FLASH"
@@ -224,7 +210,10 @@ fun TicklistHomeScreen() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(12.dp)
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 8.dp
+                    )
             ) {
                 Text(
                     text = "${displayedRoutes.size} von ${routes.size} Routen",
@@ -244,58 +233,10 @@ fun TicklistHomeScreen() {
                     Box {
                         OutlinedButton(
                             onClick = {
-                                showSortMenu = true
-                            },
-                            contentPadding = PaddingValues(
-                                horizontal = 8.dp,
-                                vertical = 2.dp
-                            )
-                        ) {
-                            Text(
-                                text = if (sortMode == SortMode.NUMBER) {
-                                    "Sortierung: Nummer"
-                                } else {
-                                    "Sortierung: Status"
-                                },
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = {
-                                showSortMenu = false
-                            }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Nach Nummer")
-                                },
-                                onClick = {
-                                    sortMode = SortMode.NUMBER
-                                    showSortMenu = false
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Nach Status")
-                                },
-                                onClick = {
-                                    sortMode = SortMode.STATUS
-                                    showSortMenu = false
-                                }
-                            )
-                        }
-                    }
-
-                    Box {
-                        OutlinedButton(
-                            onClick = {
                                 showFilterMenu = true
                             },
                             contentPadding = PaddingValues(
-                                horizontal = 8.dp,
+                                horizontal = 10.dp,
                                 vertical = 2.dp
                             )
                         ) {
@@ -358,7 +299,18 @@ fun TicklistHomeScreen() {
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             item {
-                RouteTableHeader()
+                RouteTableHeader(
+                    sortColumn = sortColumn,
+                    sortAscending = sortAscending,
+                    onSort = { column ->
+                        if (sortColumn == column) {
+                            sortAscending = !sortAscending
+                        } else {
+                            sortColumn = column
+                            sortAscending = true
+                        }
+                    }
+                )
             }
 
             items(
@@ -537,7 +489,7 @@ fun FilterMenu(
             checked = StatusFilter.FLASH in selectedFilters
         ) {
             onFiltersChanged(
-                selectedFilters.toggle(StatusFilter.FLASH)
+                selectedFilters.toggleFilter(StatusFilter.FLASH)
             )
         }
 
@@ -546,7 +498,7 @@ fun FilterMenu(
             checked = StatusFilter.TOP in selectedFilters
         ) {
             onFiltersChanged(
-                selectedFilters.toggle(StatusFilter.TOP)
+                selectedFilters.toggleFilter(StatusFilter.TOP)
             )
         }
 
@@ -555,7 +507,7 @@ fun FilterMenu(
             checked = StatusFilter.ZONE in selectedFilters
         ) {
             onFiltersChanged(
-                selectedFilters.toggle(StatusFilter.ZONE)
+                selectedFilters.toggleFilter(StatusFilter.ZONE)
             )
         }
 
@@ -564,7 +516,7 @@ fun FilterMenu(
             checked = StatusFilter.PROJECT in selectedFilters
         ) {
             onFiltersChanged(
-                selectedFilters.toggle(StatusFilter.PROJECT)
+                selectedFilters.toggleFilter(StatusFilter.PROJECT)
             )
         }
 
@@ -573,7 +525,7 @@ fun FilterMenu(
             checked = StatusFilter.NONE in selectedFilters
         ) {
             onFiltersChanged(
-                selectedFilters.toggle(StatusFilter.NONE)
+                selectedFilters.toggleFilter(StatusFilter.NONE)
             )
         }
 
@@ -634,7 +586,7 @@ fun FilterCheckboxItem(
     )
 }
 
-fun Set<StatusFilter>.toggle(
+fun Set<StatusFilter>.toggleFilter(
     filter: StatusFilter
 ): Set<StatusFilter> {
     return if (filter in this) {
@@ -747,6 +699,29 @@ fun RouteDialog(
 }
 
 @Composable
+fun StatusSelectionButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    if (selected) {
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text)
+        }
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text)
+        }
+    }
+}
+
+@Composable
 fun CalculationBar(
     topCount: Int,
     flashCount: Int,
@@ -769,38 +744,96 @@ fun CalculationBar(
 }
 
 @Composable
-fun RouteTableHeader() {
+fun RouteTableHeader(
+    sortColumn: SortColumn,
+    sortAscending: Boolean,
+    onSort: (SortColumn) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
+        SortHeader(
             text = "Route",
+            column = SortColumn.ROUTE,
+            currentColumn = sortColumn,
+            ascending = sortAscending,
             modifier = Modifier.weight(1.15f),
-            style = MaterialTheme.typography.labelLarge
+            onClick = onSort
         )
 
-        HeaderText("Flash", Modifier.weight(1f))
-        HeaderText("Top", Modifier.weight(1f))
-        HeaderText("Zone", Modifier.weight(1f))
-        HeaderText("Projekt", Modifier.weight(1f))
+        SortHeader(
+            text = "Flash",
+            column = SortColumn.FLASH,
+            currentColumn = sortColumn,
+            ascending = sortAscending,
+            modifier = Modifier.weight(1f),
+            onClick = onSort
+        )
+
+        SortHeader(
+            text = "Top",
+            column = SortColumn.TOP,
+            currentColumn = sortColumn,
+            ascending = sortAscending,
+            modifier = Modifier.weight(1f),
+            onClick = onSort
+        )
+
+        SortHeader(
+            text = "Zone",
+            column = SortColumn.ZONE,
+            currentColumn = sortColumn,
+            ascending = sortAscending,
+            modifier = Modifier.weight(1f),
+            onClick = onSort
+        )
+
+        SortHeader(
+            text = "Projekt",
+            column = SortColumn.PROJECT,
+            currentColumn = sortColumn,
+            ascending = sortAscending,
+            modifier = Modifier.weight(1f),
+            onClick = onSort
+        )
     }
 }
 
 @Composable
-fun HeaderText(
+fun SortHeader(
     text: String,
-    modifier: Modifier
+    column: SortColumn,
+    currentColumn: SortColumn,
+    ascending: Boolean,
+    modifier: Modifier,
+    onClick: (SortColumn) -> Unit
 ) {
-    Text(
-        text = text,
+    TextButton(
+        onClick = {
+            onClick(column)
+        },
         modifier = modifier,
-        style = MaterialTheme.typography.labelLarge,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
-    )
+        contentPadding = PaddingValues(
+            horizontal = 0.dp,
+            vertical = 0.dp
+        )
+    ) {
+        val arrow = if (column == currentColumn) {
+            if (ascending) " ↑" else " ↓"
+        } else {
+            ""
+        }
+
+        Text(
+            text = text + arrow,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontSize = 11.sp
+        )
+    }
 }
 
 @Composable
@@ -915,29 +948,6 @@ fun RouteRow(
 }
 
 @Composable
-fun StatusSelectionButton(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    if (selected) {
-        Button(
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(text)
-        }
-    } else {
-        OutlinedButton(
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(text)
-        }
-    }
-}
-
-@Composable
 fun StatusButton(
     label: String,
     selected: Boolean,
@@ -1008,8 +1018,7 @@ fun StatusButton(
                                     completed = true
                                 }
 
-                                val released =
-                                    tryAwaitRelease()
+                                val released = tryAwaitRelease()
 
                                 if (completed && released) {
                                     onComplete()
@@ -1079,13 +1088,64 @@ fun BorderProgress(
     }
 }
 
-fun statusOrder(status: String?): Int {
+fun routeFilter(status: String?): StatusFilter? {
     return when (status) {
-        null -> 0
-        "PROJECT" -> 1
-        "ZONE" -> 2
-        "TOP" -> 3
-        "FLASH" -> 4
-        else -> 5
+        null -> StatusFilter.NONE
+        "FLASH" -> StatusFilter.FLASH
+        "TOP" -> StatusFilter.TOP
+        "ZONE" -> StatusFilter.ZONE
+        "PROJECT" -> StatusFilter.PROJECT
+        else -> null
+    }
+}
+
+fun routeComparator(
+    column: SortColumn,
+    ascending: Boolean
+): Comparator<RouteEntity> {
+    val comparator = when (column) {
+        SortColumn.ROUTE -> {
+            compareBy<RouteEntity> {
+                it.number
+            }
+        }
+
+        SortColumn.FLASH -> {
+            compareByDescending<RouteEntity> {
+                it.status == "FLASH"
+            }.thenBy {
+                it.number
+            }
+        }
+
+        SortColumn.TOP -> {
+            compareByDescending<RouteEntity> {
+                it.status == "TOP"
+            }.thenBy {
+                it.number
+            }
+        }
+
+        SortColumn.ZONE -> {
+            compareByDescending<RouteEntity> {
+                it.status == "ZONE"
+            }.thenBy {
+                it.number
+            }
+        }
+
+        SortColumn.PROJECT -> {
+            compareByDescending<RouteEntity> {
+                it.status == "PROJECT"
+            }.thenBy {
+                it.number
+            }
+        }
+    }
+
+    return if (ascending) {
+        comparator
+    } else {
+        comparator.reversed()
     }
 }
