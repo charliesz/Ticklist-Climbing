@@ -8,8 +8,11 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [RouteEntity::class],
-    version = 2,
+    entities = [
+        RouteEntity::class,
+        CollectionEntity::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class TicklistDatabase : RoomDatabase() {
@@ -33,6 +36,50 @@ abstract class TicklistDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+
+            override fun migrate(
+                db: SupportSQLiteDatabase
+            ) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS collections (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        discipline TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                val createdAt = System.currentTimeMillis()
+
+                db.execSQL(
+                    """
+                    INSERT INTO collections (
+                        id,
+                        name,
+                        discipline,
+                        createdAt
+                    )
+                    VALUES (
+                        1,
+                        'Boulder 01–90',
+                        'BOULDER',
+                        $createdAt
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    ALTER TABLE routes
+                    ADD COLUMN collectionId INTEGER NOT NULL DEFAULT 1
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: TicklistDatabase? = null
 
@@ -43,7 +90,10 @@ abstract class TicklistDatabase : RoomDatabase() {
                     TicklistDatabase::class.java,
                     "ticklist_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3
+                    )
                     .build()
 
                 INSTANCE = instance

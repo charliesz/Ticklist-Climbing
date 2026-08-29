@@ -19,5 +19,8 @@ data class RouteEntity(
     val statusChangedAt: Long? = null,
 
     @ColumnInfo(name = "completedDate")
-    val completedDate: Long? = null
+    val completedDate: Long? = null,
+
+    @ColumnInfo(name = "collectionId")
+    val collectionId: Int = 1
 )

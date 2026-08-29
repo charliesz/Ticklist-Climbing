@@ -17,6 +17,17 @@ interface RouteDao {
     @Query("SELECT * FROM routes WHERE number = :number LIMIT 1")
     suspend fun getRoute(number: Int): RouteEntity?
 
+    @Query(
+        """
+        SELECT * FROM routes
+        WHERE collectionId = :collectionId
+        ORDER BY number ASC
+        """
+    )
+    fun observeRoutesForCollection(
+        collectionId: Int
+    ): Flow<List<RouteEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRoute(route: RouteEntity)
 
@@ -33,7 +44,8 @@ interface RouteDao {
             difficulty = :difficulty,
             status = :status,
             statusChangedAt = :statusChangedAt,
-            completedDate = :completedDate
+            completedDate = :completedDate,
+            collectionId = :collectionId
         WHERE number = :number
         """
     )
@@ -43,7 +55,8 @@ interface RouteDao {
         difficulty: String,
         status: String?,
         statusChangedAt: Long?,
-        completedDate: Long?
+        completedDate: Long?,
+        collectionId: Int = 1
     )
 
     @Delete
@@ -54,4 +67,14 @@ interface RouteDao {
 
     @Query("SELECT COUNT(*) FROM routes")
     suspend fun countRoutes(): Int
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM routes
+        WHERE collectionId = :collectionId
+        """
+    )
+    suspend fun countRoutesForCollection(
+        collectionId: Int
+    ): Int
 }
