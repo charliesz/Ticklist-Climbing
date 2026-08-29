@@ -7,10 +7,7 @@ import androidx.room.PrimaryKey
 data class CollectionEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-
     val name: String,
-
     val discipline: String,
-
     val createdAt: Long
 )

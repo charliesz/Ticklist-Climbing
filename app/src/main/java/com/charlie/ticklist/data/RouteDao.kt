@@ -56,7 +56,17 @@ interface RouteDao {
         status: String?,
         statusChangedAt: Long?,
         completedDate: Long?,
-        collectionId: Int = 1
+        collectionId: Int
+    )
+
+    @Query(
+        """
+        DELETE FROM routes
+        WHERE collectionId = :collectionId
+        """
+    )
+    suspend fun deleteRoutesForCollection(
+        collectionId: Int
     )
 
     @Delete

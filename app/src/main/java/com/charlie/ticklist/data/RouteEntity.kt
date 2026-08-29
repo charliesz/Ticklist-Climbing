@@ -8,11 +8,8 @@ import androidx.room.PrimaryKey
 data class RouteEntity(
     @PrimaryKey
     val number: Int,
-
     val name: String,
-
     val difficulty: String,
-
     val status: String? = null,
 
     @ColumnInfo(name = "statusChangedAt")

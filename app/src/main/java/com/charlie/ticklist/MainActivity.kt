@@ -8,11 +8,15 @@ import android.graphics.PathMeasure
 import android.graphics.RectF
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.combinedClickable
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,11 +65,12 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.charlie.ticklist.data.CollectionEntity
 import com.charlie.ticklist.data.RouteEntity
 import com.charlie.ticklist.data.TicklistDatabase
 import com.charlie.ticklist.ui.theme.TicklistClimbingTheme
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -101,26 +106,462 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             TicklistClimbingTheme {
-                TicklistHomeScreen()
+                TicklistApp()
             }
         }
     }
 }
 
 @Composable
-fun TicklistHomeScreen() {
+fun TicklistApp() {
+    var openCollectionId by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    val currentCollectionId = openCollectionId
+
+    if (currentCollectionId == null) {
+        CollectionsScreen(
+            onOpenCollection = {
+                openCollectionId = it
+            }
+        )
+    } else {
+        BackHandler {
+            openCollectionId = null
+        }
+
+        TicklistHomeScreen(
+            collectionId = currentCollectionId,
+            onBack = {
+                openCollectionId = null
+            }
+        )
+    }
+}
+
+@Composable
+fun CollectionsScreen(
+    onOpenCollection: (Int) -> Unit
+) {
+    val context = LocalContext.current
+    val database = remember {
+        TicklistDatabase.getDatabase(context)
+    }
+
+    val collectionDao = database.collectionDao()
+    val routeDao = database.routeDao()
+    val scope = rememberCoroutineScope()
+
+    val collections by collectionDao
+        .observeAllCollections()
+        .collectAsState(initial = emptyList())
+
+    val routes by routeDao
+        .observeAllRoutes()
+        .collectAsState(initial = emptyList())
+
+    var showNewCollectionDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var showEditCollectionDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var showDeleteCollectionDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var editingCollection by remember {
+        mutableStateOf<CollectionEntity?>(null)
+    }
+
+    var collectionEditName by remember {
+        mutableStateOf("")
+    }
+
+    var newCollectionName by remember {
+        mutableStateOf("")
+    }
+
+    var newCollectionRouteCount by remember {
+        mutableStateOf("90")
+    }
+
+    LaunchedEffect(Unit) {
+        if (collectionDao.countCollections() == 0) {
+            collectionDao.insertCollection(
+                CollectionEntity(
+                    id = 1,
+                    name = "Boulder 01–90",
+                    discipline = "BOULDER",
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+        }
+
+        if (routeDao.countRoutesForCollection(1) == 0) {
+            routeDao.insertRoutes(
+                (1..90).map { number ->
+                    RouteEntity(
+                        number = number,
+                        name = "%02d".format(number),
+                        difficulty = "",
+                        status = null,
+                        statusChangedAt = null,
+                        completedDate = null,
+                        collectionId = 1
+                    )
+                }
+            )
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "Meine Sammlungen",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                Text(
+                    text = "Sammlung antippen zum Öffnen",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    newCollectionName = ""
+                    newCollectionRouteCount = "90"
+                    showNewCollectionDialog = true
+                }
+            ) {
+                Text(
+                    text = "+",
+                    fontSize = 24.sp
+                )
+            }
+        }
+    ) { innerPadding ->
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .navigationBarsPadding(),
+            contentPadding = PaddingValues(
+                start = 10.dp,
+                end = 10.dp,
+                bottom = 12.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(
+                items = collections,
+                key = { it.id }
+            ) { collection ->
+
+                val collectionRoutes = routes.filter {
+                    it.collectionId == collection.id
+                }
+
+                val tops = collectionRoutes.count {
+                    it.status == "TOP" || it.status == "FLASH"
+                }
+
+                val flashes = collectionRoutes.count {
+                    it.status == "FLASH"
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = {
+                                onOpenCollection(collection.id)
+                            },
+                            onLongClick = {
+                                editingCollection = collection
+                                collectionEditName = collection.name
+                                showEditCollectionDialog = true
+                            }
+                        )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp)
+                    ) {
+                        Text(
+                            text = collection.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Text(
+                            text = "${collectionRoutes.size} Routen · " +
+                                    "$tops Top ($flashes Flash)",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+
+            }
+        }
+    }
+
+    if (showNewCollectionDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showNewCollectionDialog = false
+            },
+            title = {
+                Text("Neue Sammlung")
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newCollectionName,
+                        onValueChange = {
+                            newCollectionName = it
+                        },
+                        label = {
+                            Text("Name")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = newCollectionRouteCount,
+                        onValueChange = {
+                            newCollectionRouteCount = it
+                        },
+                        label = {
+                            Text("Anzahl Routen")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val name = newCollectionName.trim()
+                        val count = newCollectionRouteCount
+                            .trim()
+                            .toIntOrNull()
+                            ?: 0
+
+                        if (name.isNotBlank()) {
+                            scope.launch {
+                                val newId = collectionDao
+                                    .insertCollection(
+                                        CollectionEntity(
+                                            name = name,
+                                            discipline = "BOULDER",
+                                            createdAt =
+                                                System.currentTimeMillis()
+                                        )
+                                    )
+                                    .toInt()
+
+                                if (count > 0) {
+                                    val start = routes.nextRouteNumber()
+
+                                    routeDao.insertRoutes(
+                                        (0 until count).map { index ->
+                                            RouteEntity(
+                                                number = start + index,
+                                                name = "%02d".format(
+                                                    index + 1
+                                                ),
+                                                difficulty = "",
+                                                status = null,
+                                                statusChangedAt = null,
+                                                completedDate = null,
+                                                collectionId = newId
+                                            )
+                                        }
+                                    )
+                                }
+
+                                showNewCollectionDialog = false
+                            }
+                        }
+                    }
+                ) {
+                    Text("Anlegen")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showNewCollectionDialog = false
+                    }
+                ) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    if (showEditCollectionDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showEditCollectionDialog = false
+                editingCollection = null
+            },
+            title = {
+                Text("Sammlung umbenennen")
+            },
+            text = {
+                OutlinedTextField(
+                    value = collectionEditName,
+                    onValueChange = {
+                        collectionEditName = it
+                    },
+                    label = {
+                        Text("Name")
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val collection = editingCollection
+                        val name = collectionEditName.trim()
+
+                        if (collection != null && name.isNotBlank()) {
+                            scope.launch {
+                                collectionDao.updateCollectionName(
+                                    id = collection.id,
+                                    name = name
+                                )
+
+                                showEditCollectionDialog = false
+                                editingCollection = null
+                            }
+                        }
+                    }
+                ) {
+                    Text("Speichern")
+                }
+                TextButton(
+                    onClick = {
+                        showDeleteCollectionDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Sammlung löschen")
+                }
+                if (showDeleteCollectionDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            showDeleteCollectionDialog = false
+                        },
+                        title = {
+                            Text("Sammlung löschen?")
+                        },
+                        text = {
+                            Text(
+                                "Die Sammlung und alle zugehörigen Routen werden dauerhaft gelöscht."
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val collection = editingCollection
+
+                                    if (collection != null) {
+                                        scope.launch {
+                                            routeDao.deleteRoutesForCollection(
+                                                collection.id
+                                            )
+
+                                            collectionDao.deleteCollectionById(
+                                                collection.id
+                                            )
+
+                                            showDeleteCollectionDialog = false
+                                            showEditCollectionDialog = false
+                                            editingCollection = null
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Löschen")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    showDeleteCollectionDialog = false
+                                }
+                            ) {
+                                Text("Abbrechen")
+                            }
+                        }
+                    )
+                }
+
+
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showEditCollectionDialog = false
+                        editingCollection = null
+                    }
+                ) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun TicklistHomeScreen(
+    collectionId: Int,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
     val database = remember {
         TicklistDatabase.getDatabase(context)
     }
 
     val routeDao = database.routeDao()
+    val collectionDao = database.collectionDao()
     val scope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
 
     val routes by routeDao
-        .observeAllRoutes()
+        .observeRoutesForCollection(collectionId)
         .collectAsState(initial = emptyList())
+
+    var collectionName by remember {
+        mutableStateOf("")
+    }
+
+    LaunchedEffect(collectionId) {
+        collectionName =
+            collectionDao.getCollection(collectionId)?.name ?: ""
+    }
 
     val allFilters = remember {
         setOf(
@@ -206,23 +647,6 @@ fun TicklistHomeScreen() {
 
     var bulkDate by remember {
         mutableStateOf<Long?>(null)
-    }
-
-    LaunchedEffect(Unit) {
-        if (routeDao.countRoutes() == 0) {
-            routeDao.insertRoutes(
-                (1..90).map { number ->
-                    RouteEntity(
-                        number = number,
-                        name = "%02d".format(number),
-                        difficulty = "",
-                        status = null,
-                        statusChangedAt = null,
-                        completedDate = null
-                    )
-                }
-            )
-        }
     }
 
     val displayedRoutes = routes
@@ -323,15 +747,32 @@ fun TicklistHomeScreen() {
                         }
                     }
                 } else {
-                    Text(
-                        text = "${displayedRoutes.size} von ${routes.size} Routen",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = collectionName,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
 
-                    Text(
-                        text = "Lange drücken: Route bearbeiten",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                            Text(
+                                text = "${displayedRoutes.size} von " +
+                                        "${routes.size} Routen",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+
+                        TextButton(
+                            onClick = onBack
+                        ) {
+                            Text("Sammlungen")
+                        }
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -476,7 +917,8 @@ fun TicklistHomeScreen() {
                                 difficulty = route.difficulty,
                                 status = newStatus.name,
                                 statusChangedAt = now,
-                                completedDate = completedDate
+                                completedDate = completedDate,
+                                collectionId = route.collectionId
                             )
 
                             hapticFeedback.performHapticFeedback(
@@ -554,14 +996,22 @@ fun TicklistHomeScreen() {
                             }
 
                         if (number == null) {
+                            val nextNumber =
+                                if (routes.isEmpty()) {
+                                    1
+                                } else {
+                                    routes.maxOf { it.number } + 1
+                                }
+
                             routeDao.insertRoute(
                                 RouteEntity(
-                                    number = routes.nextRouteNumber(),
+                                    number = nextNumber,
                                     name = routeName,
                                     difficulty = routeDifficulty,
                                     status = routeStatus?.name,
                                     statusChangedAt = statusChangedAt,
-                                    completedDate = completedDate
+                                    completedDate = completedDate,
+                                    collectionId = collectionId
                                 )
                             )
                         } else {
@@ -571,7 +1021,8 @@ fun TicklistHomeScreen() {
                                 difficulty = routeDifficulty,
                                 status = routeStatus?.name,
                                 statusChangedAt = statusChangedAt,
-                                completedDate = completedDate
+                                completedDate = completedDate,
+                                collectionId = collectionId
                             )
                         }
 
@@ -643,7 +1094,8 @@ fun TicklistHomeScreen() {
                                 difficulty = route.difficulty,
                                 status = status,
                                 statusChangedAt = statusChangedAt,
-                                completedDate = completedDate
+                                completedDate = completedDate,
+                                collectionId = route.collectionId
                             )
                         }
 
@@ -716,46 +1168,34 @@ fun FilterMenu(
         expanded = expanded,
         onDismissRequest = onDismiss
     ) {
-        FilterItem(
-            label = "Flash",
-            checked = StatusFilter.FLASH in selectedFilters
-        ) {
+        FilterItem("Flash", StatusFilter.FLASH in selectedFilters) {
             onFiltersChanged(
                 selectedFilters.toggleFilter(StatusFilter.FLASH)
             )
         }
 
-        FilterItem(
-            label = "Top",
-            checked = StatusFilter.TOP in selectedFilters
-        ) {
+        FilterItem("Top", StatusFilter.TOP in selectedFilters) {
             onFiltersChanged(
                 selectedFilters.toggleFilter(StatusFilter.TOP)
             )
         }
 
-        FilterItem(
-            label = "Zone",
-            checked = StatusFilter.ZONE in selectedFilters
-        ) {
+        FilterItem("Zone", StatusFilter.ZONE in selectedFilters) {
             onFiltersChanged(
                 selectedFilters.toggleFilter(StatusFilter.ZONE)
             )
         }
 
         FilterItem(
-            label = "Projekt",
-            checked = StatusFilter.PROJECT in selectedFilters
+            "Projekt",
+            StatusFilter.PROJECT in selectedFilters
         ) {
             onFiltersChanged(
                 selectedFilters.toggleFilter(StatusFilter.PROJECT)
             )
         }
 
-        FilterItem(
-            label = "Ohne",
-            checked = StatusFilter.NONE in selectedFilters
-        ) {
+        FilterItem("Ohne", StatusFilter.NONE in selectedFilters) {
             onFiltersChanged(
                 selectedFilters.toggleFilter(StatusFilter.NONE)
             )
@@ -1573,7 +2013,7 @@ fun formatDate(timestamp: Long): String {
 fun formatDateTime(timestamp: Long): String {
     return SimpleDateFormat(
         "dd.MM.yyyy, HH:mm",
-                Locale.getDefault()
+        Locale.getDefault()
     ).format(Date(timestamp))
 }
 

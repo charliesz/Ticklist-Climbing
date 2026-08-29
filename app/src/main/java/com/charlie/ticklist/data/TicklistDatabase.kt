@@ -19,6 +19,8 @@ abstract class TicklistDatabase : RoomDatabase() {
 
     abstract fun routeDao(): RouteDao
 
+    abstract fun collectionDao(): CollectionDao
+
     companion object {
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
