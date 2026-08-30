@@ -113,11 +113,9 @@ fun RoutePhotoGallery(
             onDeletePhoto = {
                 onDeletePhoto(it)
 
-                val nextPhoto = photos.firstOrNull {
-                    it.id != selectedPhoto.id
+                openedPhoto = photos.firstOrNull { photo ->
+                    photo.id != selectedPhoto.id
                 }
-
-                openedPhoto = nextPhoto
             },
             onSetMainPhoto = onSetMainPhoto
         )
