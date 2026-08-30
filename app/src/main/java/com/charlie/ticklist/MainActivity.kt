@@ -12,11 +12,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.combinedClickable
-
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -65,129 +63,66 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.charlie.ticklist.data.CollectionEntity
-import com.charlie.ticklist.data.RouteEntity
-import com.charlie.ticklist.data.TicklistDatabase
+import com.charlie.ticklist.data.*
+import com.charlie.ticklist.ui.RoutePhotoEditor
 import com.charlie.ticklist.ui.theme.TicklistClimbingTheme
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.coroutineScope
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-enum class RouteStatus {
-    FLASH,
-    TOP,
-    ZONE,
-    PROJECT
-}
-
-enum class StatusFilter {
-    NONE,
-    FLASH,
-    TOP,
-    ZONE,
-    PROJECT
-}
-
-enum class SortColumn {
-    ROUTE,
-    FLASH,
-    TOP,
-    ZONE,
-    PROJECT
-}
+private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
+private enum class StatusFilter { NONE, FLASH, TOP, ZONE, PROJECT }
+private enum class SortColumn { ROUTE, FLASH, TOP, ZONE, PROJECT }
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        setContent {
-            TicklistClimbingTheme {
-                TicklistApp()
-            }
-        }
+        setContent { TicklistClimbingTheme { TicklistApp() } }
     }
 }
 
 @Composable
-fun TicklistApp() {
-    var openCollectionId by remember {
-        mutableStateOf<Int?>(null)
-    }
+private fun TicklistApp() {
+    var collectionId by remember { mutableStateOf<Int?>(null) }
 
-    val currentCollectionId = openCollectionId
-
-    if (currentCollectionId == null) {
-        CollectionsScreen(
-            onOpenCollection = {
-                openCollectionId = it
-            }
-        )
+    if (collectionId == null) {
+        CollectionsScreen { collectionId = it }
     } else {
-        BackHandler {
-            openCollectionId = null
-        }
-
-        TicklistHomeScreen(
-            collectionId = currentCollectionId,
-            onBack = {
-                openCollectionId = null
-            }
+        BackHandler { collectionId = null }
+        CollectionRoutesScreen(
+            collectionId = collectionId!!,
+            onBack = { collectionId = null }
         )
     }
 }
 
 @Composable
-fun CollectionsScreen(
-    onOpenCollection: (Int) -> Unit
+private fun CollectionsScreen(
+    onOpen: (Int) -> Unit
 ) {
     val context = LocalContext.current
-    val database = remember {
-        TicklistDatabase.getDatabase(context)
-    }
-
-    val collectionDao = database.collectionDao()
-    val routeDao = database.routeDao()
+    val db = remember { TicklistDatabase.getDatabase(context) }
+    val collectionDao = db.collectionDao()
+    val routeDao = db.routeDao()
     val scope = rememberCoroutineScope()
 
     val collections by collectionDao
         .observeAllCollections()
-        .collectAsState(initial = emptyList())
+        .collectAsState(emptyList())
 
     val routes by routeDao
         .observeAllRoutes()
-        .collectAsState(initial = emptyList())
+        .collectAsState(emptyList())
 
-    var showNewCollectionDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showEditCollectionDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showDeleteCollectionDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var editingCollection by remember {
-        mutableStateOf<CollectionEntity?>(null)
-    }
-
-    var collectionEditName by remember {
-        mutableStateOf("")
-    }
-
-    var newCollectionName by remember {
-        mutableStateOf("")
-    }
-
-    var newCollectionRouteCount by remember {
-        mutableStateOf("90")
-    }
+    var newDialog by remember { mutableStateOf(false) }
+    var editDialog by remember { mutableStateOf(false) }
+    var deleteDialog by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<CollectionEntity?>(null) }
+    var name by remember { mutableStateOf("") }
+    var newName by remember { mutableStateOf("") }
+    var newCount by remember { mutableStateOf("90") }
 
     LaunchedEffect(Unit) {
         if (collectionDao.countCollections() == 0) {
@@ -208,9 +143,6 @@ fun CollectionsScreen(
                         number = number,
                         name = "%02d".format(number),
                         difficulty = "",
-                        status = null,
-                        statusChangedAt = null,
-                        completedDate = null,
                         collectionId = 1
                     )
                 }
@@ -221,18 +153,17 @@ fun CollectionsScreen(
     Scaffold(
         topBar = {
             Column(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
                     .padding(12.dp)
             ) {
                 Text(
-                    text = "Meine Sammlungen",
+                    "Meine Sammlungen",
                     style = MaterialTheme.typography.headlineSmall
                 )
-
                 Text(
-                    text = "Sammlung antippen zum Öffnen",
+                    "Kurz tippen zum Öffnen, lange drücken zum Bearbeiten",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -240,36 +171,24 @@ fun CollectionsScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    newCollectionName = ""
-                    newCollectionRouteCount = "90"
-                    showNewCollectionDialog = true
+                    newName = ""
+                    newCount = "90"
+                    newDialog = true
                 }
             ) {
-                Text(
-                    text = "+",
-                    fontSize = 24.sp
-                )
+                Text("+")
             }
         }
-    ) { innerPadding ->
-
+    ) { padding ->
         LazyColumn(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(padding)
                 .navigationBarsPadding(),
-            contentPadding = PaddingValues(
-                start = 10.dp,
-                end = 10.dp,
-                bottom = 12.dp
-            ),
+            contentPadding = PaddingValues(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(
-                items = collections,
-                key = { it.id }
-            ) { collection ->
-
+            items(collections, key = { it.id }) { collection ->
                 val collectionRoutes = routes.filter {
                     it.collectionId == collection.id
                 }
@@ -283,58 +202,54 @@ fun CollectionsScreen(
                 }
 
                 Card(
-                    modifier = Modifier
+                    Modifier
                         .fillMaxWidth()
                         .combinedClickable(
                             onClick = {
-                                onOpenCollection(collection.id)
+                                onOpen(collection.id)
                             },
                             onLongClick = {
-                                editingCollection = collection
-                                collectionEditName = collection.name
-                                showEditCollectionDialog = true
+                                editing = collection
+                                name = collection.name
+                                editDialog = true
                             }
                         )
                 ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp)
-                    ) {
+                    Column(Modifier.padding(14.dp)) {
                         Text(
-                            text = collection.name,
+                            collection.name,
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
 
                         Text(
-                            text = "${collectionRoutes.size} Routen · " +
+                            "${collectionRoutes.size} Routen · " +
                                     "$tops Top ($flashes Flash)",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
-
-
             }
         }
     }
 
-    if (showNewCollectionDialog) {
+    if (newDialog) {
         AlertDialog(
             onDismissRequest = {
-                showNewCollectionDialog = false
+                newDialog = false
             },
             title = {
                 Text("Neue Sammlung")
             },
             text = {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
-                        value = newCollectionName,
+                        value = newName,
                         onValueChange = {
-                            newCollectionName = it
+                            newName = it
                         },
                         label = {
                             Text("Name")
@@ -344,9 +259,9 @@ fun CollectionsScreen(
                     )
 
                     OutlinedTextField(
-                        value = newCollectionRouteCount,
+                        value = newCount,
                         onValueChange = {
-                            newCollectionRouteCount = it
+                            newCount = it
                         },
                         label = {
                             Text("Anzahl Routen")
@@ -359,18 +274,15 @@ fun CollectionsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val name = newCollectionName.trim()
-                        val count = newCollectionRouteCount
-                            .trim()
-                            .toIntOrNull()
-                            ?: 0
+                        val collectionName = newName.trim()
+                        val count = newCount.toIntOrNull() ?: 0
 
-                        if (name.isNotBlank()) {
+                        if (collectionName.isNotBlank()) {
                             scope.launch {
-                                val newId = collectionDao
+                                val id = collectionDao
                                     .insertCollection(
                                         CollectionEntity(
-                                            name = name,
+                                            name = collectionName,
                                             discipline = "BOULDER",
                                             createdAt =
                                                 System.currentTimeMillis()
@@ -379,26 +291,19 @@ fun CollectionsScreen(
                                     .toInt()
 
                                 if (count > 0) {
-                                    val start = routes.nextRouteNumber()
-
                                     routeDao.insertRoutes(
-                                        (0 until count).map { index ->
+                                        (1..count).map { number ->
                                             RouteEntity(
-                                                number = start + index,
-                                                name = "%02d".format(
-                                                    index + 1
-                                                ),
+                                                number = number,
+                                                name = "%02d".format(number),
                                                 difficulty = "",
-                                                status = null,
-                                                statusChangedAt = null,
-                                                completedDate = null,
-                                                collectionId = newId
+                                                collectionId = id
                                             )
                                         }
                                     )
                                 }
 
-                                showNewCollectionDialog = false
+                                newDialog = false
                             }
                         }
                     }
@@ -409,7 +314,7 @@ fun CollectionsScreen(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showNewCollectionDialog = false
+                        newDialog = false
                     }
                 ) {
                     Text("Abbrechen")
@@ -418,114 +323,120 @@ fun CollectionsScreen(
         )
     }
 
-    if (showEditCollectionDialog) {
+    if (editDialog) {
         AlertDialog(
             onDismissRequest = {
-                showEditCollectionDialog = false
-                editingCollection = null
+                editDialog = false
+                editing = null
             },
             title = {
-                Text("Sammlung umbenennen")
+                Text("Sammlung bearbeiten")
             },
             text = {
-                OutlinedTextField(
-                    value = collectionEditName,
-                    onValueChange = {
-                        collectionEditName = it
-                    },
-                    label = {
-                        Text("Name")
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                        },
+                        label = {
+                            Text("Name")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    TextButton(
+                        onClick = {
+                            deleteDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Sammlung löschen")
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val collection = editingCollection
-                        val name = collectionEditName.trim()
+                        val collection = editing
+                        val newCollectionName = name.trim()
 
-                        if (collection != null && name.isNotBlank()) {
+                        if (
+                            collection != null &&
+                            newCollectionName.isNotBlank()
+                        ) {
                             scope.launch {
                                 collectionDao.updateCollectionName(
-                                    id = collection.id,
-                                    name = name
+                                    collection.id,
+                                    newCollectionName
                                 )
 
-                                showEditCollectionDialog = false
-                                editingCollection = null
+                                editDialog = false
+                                editing = null
                             }
                         }
                     }
                 ) {
                     Text("Speichern")
                 }
-                TextButton(
-                    onClick = {
-                        showDeleteCollectionDialog = true
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Sammlung löschen")
-                }
-                if (showDeleteCollectionDialog) {
-                    AlertDialog(
-                        onDismissRequest = {
-                            showDeleteCollectionDialog = false
-                        },
-                        title = {
-                            Text("Sammlung löschen?")
-                        },
-                        text = {
-                            Text(
-                                "Die Sammlung und alle zugehörigen Routen werden dauerhaft gelöscht."
-                            )
-                        },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    val collection = editingCollection
-
-                                    if (collection != null) {
-                                        scope.launch {
-                                            routeDao.deleteRoutesForCollection(
-                                                collection.id
-                                            )
-
-                                            collectionDao.deleteCollectionById(
-                                                collection.id
-                                            )
-
-                                            showDeleteCollectionDialog = false
-                                            showEditCollectionDialog = false
-                                            editingCollection = null
-                                        }
-                                    }
-                                }
-                            ) {
-                                Text("Löschen")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    showDeleteCollectionDialog = false
-                                }
-                            ) {
-                                Text("Abbrechen")
-                            }
-                        }
-                    )
-                }
-
-
             },
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showEditCollectionDialog = false
-                        editingCollection = null
+                        editDialog = false
+                        editing = null
+                    }
+                ) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    if (deleteDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                deleteDialog = false
+            },
+            title = {
+                Text("Sammlung löschen?")
+            },
+            text = {
+                Text(
+                    "Die Sammlung und alle zugehörigen Routen werden dauerhaft gelöscht."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val collection = editing
+
+                        if (collection != null) {
+                            scope.launch {
+                                routeDao.deleteRoutesForCollection(
+                                    collection.id
+                                )
+                                collectionDao.deleteCollectionById(
+                                    collection.id
+                                )
+
+                                deleteDialog = false
+                                editDialog = false
+                                editing = null
+                            }
+                        }
+                    }
+                ) {
+                    Text("Löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        deleteDialog = false
                     }
                 ) {
                     Text("Abbrechen")
@@ -536,27 +447,29 @@ fun CollectionsScreen(
 }
 
 @Composable
-fun TicklistHomeScreen(
+private fun CollectionRoutesScreen(
     collectionId: Int,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val database = remember {
+    val db = remember {
         TicklistDatabase.getDatabase(context)
     }
 
-    val routeDao = database.routeDao()
-    val collectionDao = database.collectionDao()
+    val routeDao = db.routeDao()
+    val collectionDao = db.collectionDao()
+    val photoDao = db.routePhotoDao()
+    val photoRepository = remember {
+        RoutePhotoRepository(context, photoDao)
+    }
     val scope = rememberCoroutineScope()
-    val hapticFeedback = LocalHapticFeedback.current
+    val haptic = LocalHapticFeedback.current
 
     val routes by routeDao
         .observeRoutesForCollection(collectionId)
-        .collectAsState(initial = emptyList())
+        .collectAsState(emptyList())
 
-    var collectionName by remember {
-        mutableStateOf("")
-    }
+    var collectionName by remember { mutableStateOf("") }
 
     LaunchedEffect(collectionId) {
         collectionName =
@@ -573,163 +486,92 @@ fun TicklistHomeScreen(
         )
     }
 
-    var selectedFilters by remember {
-        mutableStateOf(allFilters)
-    }
+    var filters by remember { mutableStateOf(allFilters) }
+    var sort by remember { mutableStateOf(SortColumn.ROUTE) }
+    var ascending by remember { mutableStateOf(true) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var filterOpen by remember { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf(false) }
+    var bulk by remember { mutableStateOf(false) }
+    var delete by remember { mutableStateOf(false) }
 
-    var sortColumn by remember {
-        mutableStateOf(SortColumn.ROUTE)
-    }
+    var editingNumber by remember { mutableStateOf<Int?>(null) }
+    var name by remember { mutableStateOf("") }
+    var difficulty by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<RouteStatus?>(null) }
+    var statusAt by remember { mutableStateOf<Long?>(null) }
+    var completed by remember { mutableStateOf<Long?>(null) }
 
-    var sortAscending by remember {
-        mutableStateOf(true)
-    }
+    var bulkStatusEnabled by remember { mutableStateOf(false) }
+    var bulkStatus by remember { mutableStateOf<RouteStatus?>(null) }
+    var bulkDateEnabled by remember { mutableStateOf(false) }
+    var bulkDate by remember { mutableStateOf<Long?>(null) }
 
-    var selectionMode by remember {
-        mutableStateOf(false)
-    }
-
-    var selectedRouteNumbers by remember {
-        mutableStateOf<Set<Int>>(emptySet())
-    }
-
-    var showFilterMenu by remember {
-        mutableStateOf(false)
-    }
-
-    var showSingleRouteDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showBulkEditDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showDeleteDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var editingRouteNumber by remember {
-        mutableStateOf<Int?>(null)
-    }
-
-    var routeName by remember {
-        mutableStateOf("")
-    }
-
-    var routeDifficulty by remember {
-        mutableStateOf("")
-    }
-
-    var routeStatus by remember {
-        mutableStateOf<RouteStatus?>(null)
-    }
-
-    var routeStatusChangedAt by remember {
-        mutableStateOf<Long?>(null)
-    }
-
-    var routeCompletedDate by remember {
-        mutableStateOf<Long?>(null)
-    }
-
-    var bulkStatusEnabled by remember {
-        mutableStateOf(false)
-    }
-
-    var bulkStatus by remember {
-        mutableStateOf<RouteStatus?>(null)
-    }
-
-    var bulkDateEnabled by remember {
-        mutableStateOf(false)
-    }
-
-    var bulkDate by remember {
-        mutableStateOf<Long?>(null)
-    }
-
-    val displayedRoutes = routes
-        .filter { route ->
-            routeFilter(route.status) in selectedFilters
+    val shown = routes
+        .filter {
+            routeFilter(it.status) in filters
         }
         .sortedWith(
             routeComparator(
-                column = sortColumn,
-                ascending = sortAscending
+                sort,
+                ascending
             )
         )
 
-    val topCount = routes.count {
+    val tops = routes.count {
         it.status == "TOP" || it.status == "FLASH"
     }
 
-    val flashCount = routes.count {
+    val flashes = routes.count {
         it.status == "FLASH"
     }
 
-    val zoneCount = routes.count {
+    val zones = routes.count {
         it.status == "ZONE"
     }
 
     fun openRoute(route: RouteEntity) {
         scope.launch {
-            val currentRoute = routeDao.getRoute(route.number) ?: route
+            val current = routeDao.getRoute(route.number) ?: route
 
-            editingRouteNumber = currentRoute.number
-            routeName = currentRoute.name
-            routeDifficulty = currentRoute.difficulty
-            routeStatus = currentRoute.status.toRouteStatus()
-            routeStatusChangedAt = currentRoute.statusChangedAt
-            routeCompletedDate = currentRoute.completedDate
-            showSingleRouteDialog = true
+            editingNumber = current.number
+            name = current.name
+            difficulty = current.difficulty
+            status = current.status.toRouteStatus()
+            statusAt = current.statusChangedAt
+            completed = current.completedDate
+            dialog = true
         }
-    }
-
-    fun toggleRouteSelection(number: Int) {
-        selectedRouteNumbers =
-            if (number in selectedRouteNumbers) {
-                selectedRouteNumbers - number
-            } else {
-                selectedRouteNumbers + number
-            }
-    }
-
-    fun resetBulkEditState() {
-        bulkStatusEnabled = false
-        bulkStatus = null
-        bulkDateEnabled = false
-        bulkDate = null
     }
 
     Scaffold(
         topBar = {
             Column(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(
-                        horizontal = 12.dp,
-                        vertical = 8.dp
-                    )
+                    .padding(12.dp)
             ) {
                 if (selectionMode) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+                        verticalAlignment =
+                            Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${selectedRouteNumbers.size} ausgewählt",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Text("${selected.size} ausgewählt")
 
                         Row {
                             TextButton(
                                 onClick = {
-                                    if (selectedRouteNumbers.isNotEmpty()) {
-                                        resetBulkEditState()
-                                        showBulkEditDialog = true
+                                    if (selected.isNotEmpty()) {
+                                        bulkStatusEnabled = false
+                                        bulkDateEnabled = false
+                                        bulkStatus = null
+                                        bulkDate = null
+                                        bulk = true
                                     }
                                 }
                             ) {
@@ -738,7 +580,7 @@ fun TicklistHomeScreen(
 
                             TextButton(
                                 onClick = {
-                                    selectedRouteNumbers = emptySet()
+                                    selected = emptySet()
                                     selectionMode = false
                                 }
                             ) {
@@ -748,41 +590,38 @@ fun TicklistHomeScreen(
                     }
                 } else {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+                        verticalAlignment =
+                            Alignment.CenterVertically
                     ) {
                         Column {
                             Text(
-                                text = collectionName,
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                collectionName,
+                                style =
+                                    MaterialTheme.typography.titleMedium
                             )
-
                             Text(
-                                text = "${displayedRoutes.size} von " +
-                                        "${routes.size} Routen",
-                                style = MaterialTheme.typography.bodySmall
+                                "${shown.size} von ${routes.size} Routen",
+                                style =
+                                    MaterialTheme.typography.bodySmall
                             )
                         }
 
-                        TextButton(
-                            onClick = onBack
-                        ) {
+                        TextButton(onClick = onBack) {
                             Text("Sammlungen")
                         }
                     }
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement =
+                            Arrangement.spacedBy(6.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
                                 selectionMode = true
-                                selectedRouteNumbers = emptySet()
+                                selected = emptySet()
                             },
                             contentPadding = PaddingValues(
                                 horizontal = 10.dp,
@@ -790,7 +629,7 @@ fun TicklistHomeScreen(
                             )
                         ) {
                             Text(
-                                text = "Bearbeiten",
+                                "Bearbeiten",
                                 fontSize = 11.sp
                             )
                         }
@@ -798,7 +637,7 @@ fun TicklistHomeScreen(
                         Box {
                             OutlinedButton(
                                 onClick = {
-                                    showFilterMenu = true
+                                    filterOpen = true
                                 },
                                 contentPadding = PaddingValues(
                                     horizontal = 10.dp,
@@ -806,22 +645,19 @@ fun TicklistHomeScreen(
                                 )
                             ) {
                                 Text(
-                                    text = "Filter",
+                                    "Filter",
                                     fontSize = 11.sp
                                 )
                             }
 
                             FilterMenu(
-                                expanded = showFilterMenu,
-                                selectedFilters = selectedFilters,
-                                allFilters = allFilters,
-                                onDismiss = {
-                                    showFilterMenu = false
-                                },
-                                onFiltersChanged = {
-                                    selectedFilters = it
-                                }
-                            )
+                                filterOpen,
+                                filters,
+                                allFilters,
+                                { filterOpen = false }
+                            ) {
+                                filters = it
+                            }
                         }
                     }
                 }
@@ -829,86 +665,68 @@ fun TicklistHomeScreen(
         },
         bottomBar = {
             CalculationBar(
-                topCount = topCount,
-                flashCount = flashCount,
-                zoneCount = zoneCount,
-                modifier = Modifier.navigationBarsPadding()
+                tops,
+                flashes,
+                zones,
+                Modifier.navigationBarsPadding()
             )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    editingRouteNumber = null
-                    routeName = ""
-                    routeDifficulty = ""
-                    routeStatus = null
-                    routeStatusChangedAt = null
-                    routeCompletedDate = null
-                    showSingleRouteDialog = true
+                    editingNumber = null
+                    name = ""
+                    difficulty = ""
+                    status = null
+                    statusAt = null
+                    completed = null
+                    dialog = true
                 }
             ) {
-                Text(
-                    text = "+",
-                    fontSize = 24.sp
-                )
+                Text("+")
             }
         }
-    ) { innerPadding ->
-
+    ) { padding ->
         LazyColumn(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(padding),
             contentPadding = PaddingValues(
                 start = 6.dp,
                 end = 6.dp,
-                bottom = 8.dp
+                bottom = 160.dp
             ),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             item {
-                RouteTableHeader(
-                    sortColumn = sortColumn,
-                    sortAscending = sortAscending,
-                    onSort = { column ->
-                        if (sortColumn == column) {
-                            sortAscending = !sortAscending
-                        } else {
-                            sortColumn = column
-                            sortAscending = true
-                        }
+                RouteHeader(sort, ascending) {
+                    if (sort == it) {
+                        ascending = !ascending
+                    } else {
+                        sort = it
+                        ascending = true
                     }
-                )
+                }
             }
 
             items(
-                items = displayedRoutes,
-                key = { it.number }
+                shown,
+                key = { it.id }
             ) { route ->
-
                 RouteRow(
                     route = route,
                     selectionMode = selectionMode,
-                    selected = route.number in selectedRouteNumbers,
+                    selected = route.number in selected,
                     onSelectedChange = {
-                        toggleRouteSelection(route.number)
-
-                        hapticFeedback.performHapticFeedback(
-                            HapticFeedbackType.LongPress
-                        )
+                        selected =
+                            if (route.number in selected) {
+                                selected - route.number
+                            } else {
+                                selected + route.number
+                            }
                     },
                     onStatusChange = { newStatus ->
                         val now = System.currentTimeMillis()
-
-                        val completedDate =
-                            if (
-                                newStatus == RouteStatus.TOP ||
-                                newStatus == RouteStatus.FLASH
-                            ) {
-                                route.completedDate ?: now
-                            } else {
-                                null
-                            }
 
                         scope.launch {
                             routeDao.updateRouteWithDates(
@@ -917,11 +735,19 @@ fun TicklistHomeScreen(
                                 difficulty = route.difficulty,
                                 status = newStatus.name,
                                 statusChangedAt = now,
-                                completedDate = completedDate,
-                                collectionId = route.collectionId
+                                completedDate =
+                                    if (
+                                        newStatus == RouteStatus.TOP ||
+                                        newStatus == RouteStatus.FLASH
+                                    ) {
+                                        route.completedDate ?: now
+                                    } else {
+                                        null
+                                    },
+                                collectionId = collectionId
                             )
 
-                            hapticFeedback.performHapticFeedback(
+                            haptic.performHapticFeedback(
                                 HapticFeedbackType.LongPress
                             )
                         }
@@ -934,110 +760,109 @@ fun TicklistHomeScreen(
         }
     }
 
-    if (showSingleRouteDialog) {
+    if (dialog) {
         SingleRouteDialog(
             context = context,
-            title = if (editingRouteNumber == null) {
+            route = routes.firstOrNull {
+                it.number == editingNumber
+            },
+            photoDao = photoDao,
+            photoRepository = photoRepository,
+            title = if (editingNumber == null) {
                 "Route hinzufügen"
             } else {
                 "Route bearbeiten"
             },
-            name = routeName,
-            difficulty = routeDifficulty,
-            status = routeStatus,
-            statusChangedAt = routeStatusChangedAt,
-            completedDate = routeCompletedDate,
+            name = name,
+            difficulty = difficulty,
+            status = status,
+            statusChangedAt = statusAt,
+            completedDate = completed,
             onNameChanged = {
-                routeName = it
+                name = it
             },
             onDifficultyChanged = {
-                routeDifficulty = it
+                difficulty = it
             },
             onStatusChanged = {
-                routeStatus = it
+                status = it
             },
             onCompletedDateChanged = {
-                routeCompletedDate = it
+                completed = it
             },
-            onDelete = if (editingRouteNumber != null) {
+            onDelete = if (editingNumber != null) {
                 {
-                    showDeleteDialog = true
+                    delete = true
                 }
             } else {
                 null
             },
             onDismiss = {
-                showSingleRouteDialog = false
-                editingRouteNumber = null
+                dialog = false
+                editingNumber = null
             },
             onSave = {
-                if (routeName.isNotBlank()) {
+                if (name.isNotBlank()) {
                     scope.launch {
-                        val number = editingRouteNumber
                         val now = System.currentTimeMillis()
 
-                        val existingRoute = routes.firstOrNull {
-                            it.number == number
+                        val old = routes.firstOrNull {
+                            it.number == editingNumber
                         }
 
-                        val statusChangedAt =
-                            existingRoute?.statusChangedAt
-                                ?: routeStatusChangedAt
+                        val savedStatusAt =
+                            old?.statusChangedAt
+                                ?: statusAt
                                 ?: now
 
-                        val completedDate =
+                        val savedCompleted =
                             if (
-                                routeStatus == RouteStatus.TOP ||
-                                routeStatus == RouteStatus.FLASH
+                                status == RouteStatus.TOP ||
+                                status == RouteStatus.FLASH
                             ) {
-                                routeCompletedDate
+                                completed
                             } else {
                                 null
                             }
 
-                        if (number == null) {
-                            val nextNumber =
-                                if (routes.isEmpty()) {
-                                    1
-                                } else {
-                                    routes.maxOf { it.number } + 1
-                                }
-
+                        if (editingNumber == null) {
                             routeDao.insertRoute(
                                 RouteEntity(
-                                    number = nextNumber,
-                                    name = routeName,
-                                    difficulty = routeDifficulty,
-                                    status = routeStatus?.name,
-                                    statusChangedAt = statusChangedAt,
-                                    completedDate = completedDate,
+                                    number = (
+                                            routes.maxOfOrNull { it.number }?.plus(1) ?: 1
+                                            ),
+                                    name = name,
+                                    difficulty = difficulty,
+                                    status = status?.name,
+                                    statusChangedAt = savedStatusAt,
+                                    completedDate = savedCompleted,
                                     collectionId = collectionId
                                 )
                             )
                         } else {
                             routeDao.updateRouteWithDates(
-                                number = number,
-                                name = routeName,
-                                difficulty = routeDifficulty,
-                                status = routeStatus?.name,
-                                statusChangedAt = statusChangedAt,
-                                completedDate = completedDate,
+                                number = editingNumber!!,
+                                name = name,
+                                difficulty = difficulty,
+                                status = status?.name,
+                                statusChangedAt = savedStatusAt,
+                                completedDate = savedCompleted,
                                 collectionId = collectionId
                             )
                         }
 
-                        showSingleRouteDialog = false
-                        editingRouteNumber = null
+                        dialog = false
+                        editingNumber = null
                     }
                 }
             }
         )
     }
 
-    if (showBulkEditDialog) {
+    if (bulk) {
         BulkEditDialog(
             context = context,
-            selectedCount = selectedRouteNumbers.size,
+            selectedCount = selected.size,
             statusEnabled = bulkStatusEnabled,
             status = bulkStatus,
             dateEnabled = bulkDateEnabled,
@@ -1055,7 +880,7 @@ fun TicklistHomeScreen(
                 bulkDate = it
             },
             onDismiss = {
-                showBulkEditDialog = false
+                bulk = false
             },
             onSave = {
                 scope.launch {
@@ -1063,67 +888,59 @@ fun TicklistHomeScreen(
 
                     routes
                         .filter {
-                            it.number in selectedRouteNumbers
+                            it.number in selected
                         }
                         .forEach { route ->
-
-                            val status =
-                                if (bulkStatusEnabled) {
-                                    bulkStatus?.name
-                                } else {
-                                    route.status
-                                }
-
-                            val completedDate =
-                                if (bulkDateEnabled) {
-                                    bulkDate
-                                } else {
-                                    route.completedDate
-                                }
-
-                            val statusChangedAt =
-                                if (bulkStatusEnabled) {
-                                    now
-                                } else {
-                                    route.statusChangedAt
-                                }
-
                             routeDao.updateRouteWithDates(
                                 number = route.number,
                                 name = route.name,
                                 difficulty = route.difficulty,
-                                status = status,
-                                statusChangedAt = statusChangedAt,
-                                completedDate = completedDate,
-                                collectionId = route.collectionId
+                                status = if (bulkStatusEnabled) {
+                                    bulkStatus?.name
+                                } else {
+                                    route.status
+                                },
+                                statusChangedAt = if (
+                                    bulkStatusEnabled
+                                ) {
+                                    now
+                                } else {
+                                    route.statusChangedAt
+                                },
+                                completedDate = if (
+                                    bulkDateEnabled
+                                ) {
+                                    bulkDate
+                                } else {
+                                    route.completedDate
+                                },
+                                collectionId = collectionId
                             )
                         }
 
-                    selectedRouteNumbers = emptySet()
+                    selected = emptySet()
                     selectionMode = false
-                    showBulkEditDialog = false
+                    bulk = false
                 }
             }
         )
     }
 
-    if (showDeleteDialog) {
+    if (delete) {
         AlertDialog(
             onDismissRequest = {
-                showDeleteDialog = false
+                delete = false
             },
             title = {
                 Text("Route löschen?")
             },
             text = {
-                Text(
-                    "Diese Route wird dauerhaft aus der lokalen Datenbank gelöscht."
-                )
+                Text("Diese Route wird dauerhaft gelöscht.")
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val number = editingRouteNumber
+                        val number = editingNumber
 
                         if (number != null) {
                             routes.firstOrNull {
@@ -1135,9 +952,9 @@ fun TicklistHomeScreen(
                             }
                         }
 
-                        showDeleteDialog = false
-                        showSingleRouteDialog = false
-                        editingRouteNumber = null
+                        delete = false
+                        dialog = false
+                        editingNumber = null
                     }
                 ) {
                     Text("Löschen")
@@ -1146,7 +963,7 @@ fun TicklistHomeScreen(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showDeleteDialog = false
+                        delete = false
                     }
                 ) {
                     Text("Abbrechen")
@@ -1157,31 +974,31 @@ fun TicklistHomeScreen(
 }
 
 @Composable
-fun FilterMenu(
+private fun FilterMenu(
     expanded: Boolean,
     selectedFilters: Set<StatusFilter>,
     allFilters: Set<StatusFilter>,
     onDismiss: () -> Unit,
-    onFiltersChanged: (Set<StatusFilter>) -> Unit
+    onChanged: (Set<StatusFilter>) -> Unit
 ) {
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss
     ) {
         FilterItem("Flash", StatusFilter.FLASH in selectedFilters) {
-            onFiltersChanged(
+            onChanged(
                 selectedFilters.toggleFilter(StatusFilter.FLASH)
             )
         }
 
         FilterItem("Top", StatusFilter.TOP in selectedFilters) {
-            onFiltersChanged(
+            onChanged(
                 selectedFilters.toggleFilter(StatusFilter.TOP)
             )
         }
 
         FilterItem("Zone", StatusFilter.ZONE in selectedFilters) {
-            onFiltersChanged(
+            onChanged(
                 selectedFilters.toggleFilter(StatusFilter.ZONE)
             )
         }
@@ -1190,13 +1007,13 @@ fun FilterMenu(
             "Projekt",
             StatusFilter.PROJECT in selectedFilters
         ) {
-            onFiltersChanged(
+            onChanged(
                 selectedFilters.toggleFilter(StatusFilter.PROJECT)
             )
         }
 
         FilterItem("Ohne", StatusFilter.NONE in selectedFilters) {
-            onFiltersChanged(
+            onChanged(
                 selectedFilters.toggleFilter(StatusFilter.NONE)
             )
         }
@@ -1206,7 +1023,7 @@ fun FilterMenu(
                 Text("Alle")
             },
             onClick = {
-                onFiltersChanged(allFilters)
+                onChanged(allFilters)
             }
         )
 
@@ -1215,7 +1032,7 @@ fun FilterMenu(
                 Text("Keine")
             },
             onClick = {
-                onFiltersChanged(emptySet())
+                onChanged(emptySet())
             }
         )
 
@@ -1224,7 +1041,7 @@ fun FilterMenu(
                 Text("Abgeschlossene aus")
             },
             onClick = {
-                onFiltersChanged(
+                onChanged(
                     setOf(
                         StatusFilter.NONE,
                         StatusFilter.ZONE,
@@ -1237,7 +1054,7 @@ fun FilterMenu(
 }
 
 @Composable
-fun FilterItem(
+private fun FilterItem(
     label: String,
     checked: Boolean,
     onClick: () -> Unit
@@ -1259,8 +1076,11 @@ fun FilterItem(
 }
 
 @Composable
-fun SingleRouteDialog(
+private fun SingleRouteDialog(
     context: Context,
+    route: RouteEntity?,
+    photoDao: RoutePhotoDao,
+    photoRepository: RoutePhotoRepository,
     title: String,
     name: String,
     difficulty: String,
@@ -1304,7 +1124,25 @@ fun SingleRouteDialog(
                     singleLine = true
                 )
 
-                Text("Status")
+                if (route != null) {
+                    RoutePhotoEditor(
+                        route = route,
+                        photoDao = photoDao,
+                        photoRepository = photoRepository,
+                        onLongPressPhoto = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Text(
+                        text = "Speichere die Route zuerst, um Fotos hinzuzufügen.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Text(
+                    text = "Status",
+                    style = MaterialTheme.typography.titleMedium
+                )
 
                 StatusChoice("Kein Status", status == null) {
                     onStatusChanged(null)
@@ -1407,7 +1245,7 @@ fun SingleRouteDialog(
 }
 
 @Composable
-fun BulkEditDialog(
+private fun BulkEditDialog(
     context: Context,
     selectedCount: Int,
     statusEnabled: Boolean,
@@ -1528,7 +1366,7 @@ fun BulkEditDialog(
 }
 
 @Composable
-fun StatusChoice(
+private fun StatusChoice(
     label: String,
     selected: Boolean,
     onClick: () -> Unit
@@ -1551,7 +1389,7 @@ fun StatusChoice(
 }
 
 @Composable
-fun CalculationBar(
+private fun CalculationBar(
     topCount: Int,
     flashCount: Int,
     zoneCount: Int,
@@ -1564,106 +1402,61 @@ fun CalculationBar(
     ) {
         Text(
             text = "Top: $topCount ($flashCount Flash) · Zone: $zoneCount",
-            modifier = Modifier.padding(
-                horizontal = 10.dp,
-                vertical = 8.dp
-            )
+            modifier = Modifier.padding(10.dp)
         )
     }
 }
 
 @Composable
-fun RouteTableHeader(
-    sortColumn: SortColumn,
-    sortAscending: Boolean,
+private fun RouteHeader(
+    column: SortColumn,
+    ascending: Boolean,
     onSort: (SortColumn) -> Unit
 ) {
     Row(
-        modifier = Modifier
+        Modifier
             .fillMaxWidth()
-            .padding(6.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(6.dp)
     ) {
-        SortHeader(
-            "Route",
-            SortColumn.ROUTE,
-            sortColumn,
-            sortAscending,
-            Modifier.weight(1.15f),
-            onSort
-        )
+        listOf(
+            "Route" to SortColumn.ROUTE,
+            "Flash" to SortColumn.FLASH,
+            "Top" to SortColumn.TOP,
+            "Zone" to SortColumn.ZONE,
+            "Projekt" to SortColumn.PROJECT
+        ).forEach { (label, sortColumn) ->
+            TextButton(
+                onClick = {
+                    onSort(sortColumn)
+                },
+                modifier = Modifier.weight(
+                    if (sortColumn == SortColumn.ROUTE) {
+                        1.15f
+                    } else {
+                        1f
+                    }
+                ),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                val arrow =
+                    if (sortColumn == column) {
+                        if (ascending) " ↑" else " ↓"
+                    } else {
+                        ""
+                    }
 
-        SortHeader(
-            "Flash",
-            SortColumn.FLASH,
-            sortColumn,
-            sortAscending,
-            Modifier.weight(1f),
-            onSort
-        )
-
-        SortHeader(
-            "Top",
-            SortColumn.TOP,
-            sortColumn,
-            sortAscending,
-            Modifier.weight(1f),
-            onSort
-        )
-
-        SortHeader(
-            "Zone",
-            SortColumn.ZONE,
-            sortColumn,
-            sortAscending,
-            Modifier.weight(1f),
-            onSort
-        )
-
-        SortHeader(
-            "Projekt",
-            SortColumn.PROJECT,
-            sortColumn,
-            sortAscending,
-            Modifier.weight(1f),
-            onSort
-        )
-    }
-}
-
-@Composable
-fun SortHeader(
-    text: String,
-    column: SortColumn,
-    current: SortColumn,
-    ascending: Boolean,
-    modifier: Modifier,
-    onClick: (SortColumn) -> Unit
-) {
-    TextButton(
-        onClick = {
-            onClick(column)
-        },
-        modifier = modifier,
-        contentPadding = PaddingValues(0.dp)
-    ) {
-        val arrow = if (column == current) {
-            if (ascending) " ↑" else " ↓"
-        } else {
-            ""
+                Text(
+                    text = label + arrow,
+                    fontSize = 11.sp,
+                    maxLines = 1
+                )
+            }
         }
-
-        Text(
-            text = text + arrow,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
 @Composable
-fun RouteRow(
+private fun RouteRow(
     route: RouteEntity,
     selectionMode: Boolean,
     selected: Boolean,
@@ -1671,7 +1464,7 @@ fun RouteRow(
     onStatusChange: (RouteStatus) -> Unit,
     onEdit: () -> Unit
 ) {
-    var rowProgress by remember(route.number) {
+    var progress by remember(route.id) {
         mutableStateOf(0f)
     }
 
@@ -1682,111 +1475,77 @@ fun RouteRow(
             Color.Transparent
         }
 
-    Box(
-        modifier = Modifier
+    Row(
+        Modifier
             .fillMaxWidth()
             .background(background)
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth()
+        if (selectionMode) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = {
+                    onSelectedChange()
+                }
+            )
+        }
+
+        Column(
+            Modifier
+                .weight(1.15f)
+                .pointerInput(route.id, selectionMode) {
+                    detectTapGestures(
+                        onTap = {
+                            if (selectionMode) {
+                                onSelectedChange()
+                            }
+                        },
+                        onLongPress = {
+                            if (!selectionMode) {
+                                onEdit()
+                            }
+                        }
+                    )
+                }
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (selectionMode) {
-                    Checkbox(
-                        checked = selected,
-                        onCheckedChange = {
-                            onSelectedChange()
-                        }
-                    )
-                }
+            Text(
+                route.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
 
-                Column(
-                    modifier = Modifier
-                        .weight(1.15f)
-                        .pointerInput(route.number, selectionMode) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (selectionMode) {
-                                        onSelectedChange()
-                                    }
-                                },
-                                onLongPress = {
-                                    if (!selectionMode) {
-                                        onEdit()
-                                    }
-                                }
-                            )
-                        }
-                ) {
-                    Text(
-                        text = route.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    if (route.difficulty.isNotBlank()) {
-                        Text(
-                            text = route.difficulty,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-
-                StatusButton(
-                    "Flash",
-                    route.status == "FLASH",
-                    Modifier.weight(1f),
-                    { rowProgress = it },
-                    {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.FLASH)
-                    }
-                )
-
-                StatusButton(
-                    "Top",
-                    route.status == "TOP",
-                    Modifier.weight(1f),
-                    { rowProgress = it },
-                    {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.TOP)
-                    }
-                )
-
-                StatusButton(
-                    "Zone",
-                    route.status == "ZONE",
-                    Modifier.weight(1f),
-                    { rowProgress = it },
-                    {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.ZONE)
-                    }
-                )
-
-                StatusButton(
-                    "Projekt",
-                    route.status == "PROJECT",
-                    Modifier.weight(1f),
-                    { rowProgress = it },
-                    {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.PROJECT)
-                    }
+            if (route.difficulty.isNotBlank()) {
+                Text(
+                    route.difficulty,
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
 
-        if (rowProgress > 0f) {
+        listOf(
+            "Flash" to RouteStatus.FLASH,
+            "Top" to RouteStatus.TOP,
+            "Zone" to RouteStatus.ZONE,
+            "Projekt" to RouteStatus.PROJECT
+        ).forEach { (label, routeStatus) ->
+            StatusButton(
+                label = label,
+                selected = route.status == routeStatus.name,
+                modifier = Modifier.weight(1f),
+                onProgress = {
+                    progress = it
+                },
+                onComplete = {
+                    progress = 0f
+                    onStatusChange(routeStatus)
+                }
+            )
+        }
+
+        if (progress > 0f) {
             BorderProgress(
-                progress = rowProgress,
+                progress = progress,
                 color = MaterialTheme.colorScheme.primary
             )
         }
@@ -1794,22 +1553,21 @@ fun RouteRow(
 }
 
 @Composable
-fun StatusButton(
+private fun StatusButton(
     label: String,
     selected: Boolean,
     modifier: Modifier,
     onProgress: (Float) -> Unit,
     onComplete: () -> Unit
 ) {
-    val progress = remember {
+    val animation = remember {
         Animatable(0f)
     }
 
     Box(
-        modifier = modifier
+        modifier
             .height(44.dp)
-            .padding(horizontal = 1.dp),
-        contentAlignment = Alignment.Center
+            .padding(1.dp)
     ) {
         if (selected) {
             Button(
@@ -1817,11 +1575,7 @@ fun StatusButton(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(1.dp)
             ) {
-                Text(
-                    text = label,
-                    fontSize = 10.sp,
-                    maxLines = 1
-                )
+                Text(label, fontSize = 10.sp)
             }
         } else {
             OutlinedButton(
@@ -1829,30 +1583,26 @@ fun StatusButton(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(1.dp)
             ) {
-                Text(
-                    text = label,
-                    fontSize = 10.sp,
-                    maxLines = 1
-                )
+                Text(label, fontSize = 10.sp)
             }
         }
 
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .pointerInput(label) {
                     detectTapGestures(
                         onPress = {
-                            coroutineScope {
+                            kotlinx.coroutines.coroutineScope {
                                 var completed = false
 
-                                progress.snapTo(0f)
+                                animation.snapTo(0f)
                                 onProgress(0f)
 
-                                val animationJob = launch {
-                                    progress.animateTo(
-                                        targetValue = 1f,
-                                        animationSpec = tween(1500)
+                                val job = launch {
+                                    animation.animateTo(
+                                        1f,
+                                        tween(1500)
                                     ) {
                                         onProgress(value)
                                     }
@@ -1864,12 +1614,14 @@ fun StatusButton(
 
                                 if (completed && released) {
                                     onComplete()
-                                    progress.snapTo(0f)
                                 } else {
-                                    animationJob.cancel()
-                                    progress.snapTo(0f)
+                                    job.cancel()
+                                    animation.snapTo(0f)
                                     onProgress(0f)
                                 }
+
+                                animation.snapTo(0f)
+                                onProgress(0f)
                             }
                         }
                     )
@@ -1879,17 +1631,16 @@ fun StatusButton(
 }
 
 @Composable
-fun BorderProgress(
+private fun BorderProgress(
     progress: Float,
     color: Color
 ) {
     Canvas(
-        modifier = Modifier
+        Modifier
             .fillMaxSize()
             .padding(1.dp)
     ) {
         val stroke = 4.dp.toPx()
-        val radius = 12.dp.toPx()
         val path = AndroidPath()
 
         path.addRoundRect(
@@ -1899,18 +1650,18 @@ fun BorderProgress(
                 size.width - stroke / 2f,
                 size.height - stroke / 2f
             ),
-            radius,
-            radius,
+            12.dp.toPx(),
+            12.dp.toPx(),
             AndroidPath.Direction.CW
         )
 
         val measure = PathMeasure(path, false)
-        val progressPath = AndroidPath()
+        val part = AndroidPath()
 
         measure.getSegment(
             0f,
             measure.length * progress.coerceIn(0f, 1f),
-            progressPath,
+            part,
             true
         )
 
@@ -1922,12 +1673,14 @@ fun BorderProgress(
         }
 
         drawIntoCanvas {
-            it.nativeCanvas.drawPath(progressPath, paint)
+            it.nativeCanvas.drawPath(part, paint)
         }
     }
 }
 
-fun routeFilter(status: String?): StatusFilter? {
+private fun routeFilter(
+    status: String?
+): StatusFilter? {
     return when (status) {
         null -> StatusFilter.NONE
         "FLASH" -> StatusFilter.FLASH
@@ -1938,7 +1691,7 @@ fun routeFilter(status: String?): StatusFilter? {
     }
 }
 
-fun routeComparator(
+private fun routeComparator(
     column: SortColumn,
     ascending: Boolean
 ): Comparator<RouteEntity> {
@@ -1972,10 +1725,14 @@ fun routeComparator(
         }
     }
 
-    return if (ascending) comparator else comparator.reversed()
+    return if (ascending) {
+        comparator
+    } else {
+        comparator.reversed()
+    }
 }
 
-fun Set<StatusFilter>.toggleFilter(
+private fun Set<StatusFilter>.toggleFilter(
     filter: StatusFilter
 ): Set<StatusFilter> {
     return if (filter in this) {
@@ -1985,17 +1742,7 @@ fun Set<StatusFilter>.toggleFilter(
     }
 }
 
-fun List<RouteEntity>.nextRouteNumber(): Int {
-    return if (isEmpty()) {
-        1
-    } else {
-        maxOf {
-            it.number
-        } + 1
-    }
-}
-
-fun String?.toRouteStatus(): RouteStatus? {
+private fun String?.toRouteStatus(): RouteStatus? {
     return this?.let {
         runCatching {
             RouteStatus.valueOf(it)
@@ -2003,21 +1750,21 @@ fun String?.toRouteStatus(): RouteStatus? {
     }
 }
 
-fun formatDate(timestamp: Long): String {
+private fun formatDate(timestamp: Long): String {
     return SimpleDateFormat(
         "dd.MM.yyyy",
         Locale.getDefault()
     ).format(Date(timestamp))
 }
 
-fun formatDateTime(timestamp: Long): String {
+private fun formatDateTime(timestamp: Long): String {
     return SimpleDateFormat(
         "dd.MM.yyyy, HH:mm",
         Locale.getDefault()
     ).format(Date(timestamp))
 }
 
-fun showDatePicker(
+private fun showDatePicker(
     context: Context,
     currentDate: Long?,
     onDateSelected: (Long?) -> Unit
@@ -2032,13 +1779,34 @@ fun showDatePicker(
         context,
         { _, year, month, day ->
             val selectedDate = Calendar.getInstance().apply {
-                set(Calendar.YEAR, year)
-                set(Calendar.MONTH, month)
-                set(Calendar.DAY_OF_MONTH, day)
-                set(Calendar.HOUR_OF_DAY, 12)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
+                set(
+                    Calendar.YEAR,
+                    year
+                )
+                set(
+                    Calendar.MONTH,
+                    month
+                )
+                set(
+                    Calendar.DAY_OF_MONTH,
+                    day
+                )
+                set(
+                    Calendar.HOUR_OF_DAY,
+                    12
+                )
+                set(
+                    Calendar.MINUTE,
+                    0
+                )
+                set(
+                    Calendar.SECOND,
+                    0
+                )
+                set(
+                    Calendar.MILLISECOND,
+                    0
+                )
             }
 
             onDateSelected(selectedDate.timeInMillis)
