@@ -35,7 +35,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.charlie.ticklist.data.RoutePhotoEntity
 import java.io.File
@@ -76,7 +75,7 @@ fun RoutePhotoGallery(
             ) {
                 items(
                     items = photos,
-                    key = { it.id }
+                    key = { photo -> photo.id }
                 ) { photo ->
                     PhotoThumbnail(
                         photo = photo,
@@ -107,14 +106,14 @@ fun RoutePhotoGallery(
             onDismiss = {
                 openedPhoto = null
             },
-            onSelectPhoto = {
-                openedPhoto = it
+            onSelectPhoto = { photo ->
+                openedPhoto = photo
             },
-            onDeletePhoto = {
-                onDeletePhoto(it)
+            onDeletePhoto = { photo ->
+                onDeletePhoto(photo)
 
-                openedPhoto = photos.firstOrNull { photo ->
-                    photo.id != selectedPhoto.id
+                openedPhoto = photos.firstOrNull {
+                    it.id != photo.id
                 }
             },
             onSetMainPhoto = onSetMainPhoto
@@ -155,7 +154,9 @@ private fun PhotoThumbnail(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.7f))
+                    .background(
+                        Color.Black.copy(alpha = 0.7f)
+                    )
                     .padding(3.dp),
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall
@@ -194,7 +195,9 @@ private fun PhotoViewerDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
+                        .horizontalScroll(
+                            rememberScrollState()
+                        ),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     photos.forEach { photo ->
@@ -226,7 +229,7 @@ private fun PhotoViewerDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (selectedPhoto.isMainPhoto) {
+                        text = if (selectedPhoto.isMainPhoto) {
                             "Hauptfoto"
                         } else {
                             "Als Hauptfoto verwenden"
@@ -261,8 +264,6 @@ private fun LocalPhotoImage(
     modifier: Modifier,
     contentScale: ContentScale
 ) {
-    val context = LocalContext.current
-
     val imageBitmap = remember(filePath) {
         val file = File(filePath)
 
