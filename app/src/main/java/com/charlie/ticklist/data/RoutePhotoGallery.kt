@@ -1,10 +1,9 @@
 package com.charlie.ticklist.ui
 
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,11 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -34,14 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
-import coil.compose.AsyncImage
 import com.charlie.ticklist.data.RoutePhotoEntity
 import java.io.File
 
@@ -51,14 +46,11 @@ fun RoutePhotoGallery(
     onAddPhoto: () -> Unit,
     onDeletePhoto: (RoutePhotoEntity) -> Unit,
     onSetMainPhoto: (RoutePhotoEntity) -> Unit,
+    onLongPressPhoto: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedPhoto by remember {
+    var openedPhoto by remember {
         mutableStateOf<RoutePhotoEntity?>(null)
-    }
-
-    var showGallery by remember {
-        mutableStateOf(false)
     }
 
     Column(
@@ -89,22 +81,17 @@ fun RoutePhotoGallery(
                     PhotoThumbnail(
                         photo = photo,
                         onClick = {
-                            selectedPhoto = photo
-                            showGallery = true
+                            openedPhoto = photo
                         },
-                        onLongClick = {
-                            selectedPhoto = photo
-                            showGallery = true
-                        }
+                        onLongPress = onLongPressPhoto
                     )
                 }
 
                 item {
                     OutlinedButton(
                         onClick = onAddPhoto,
-                        modifier = Modifier
-                            .size(96.dp)
-                            .height(96.dp)
+                        modifier = Modifier.size(96.dp),
+                        contentPadding = PaddingValues(4.dp)
                     ) {
                         Text("+")
                     }
@@ -113,28 +100,24 @@ fun RoutePhotoGallery(
         }
     }
 
-    if (showGallery && selectedPhoto != null) {
+    openedPhoto?.let { selectedPhoto ->
         PhotoViewerDialog(
-            photo = selectedPhoto!!,
+            selectedPhoto = selectedPhoto,
             photos = photos,
             onDismiss = {
-                showGallery = false
-                selectedPhoto = null
+                openedPhoto = null
             },
             onSelectPhoto = {
-                selectedPhoto = it
+                openedPhoto = it
             },
             onDeletePhoto = {
                 onDeletePhoto(it)
 
-                if (photos.size <= 1) {
-                    showGallery = false
-                    selectedPhoto = null
-                } else {
-                    selectedPhoto = photos.firstOrNull {
-                        it.id != photoIdOrNull(selectedPhoto)
-                    }
+                val nextPhoto = photos.firstOrNull {
+                    it.id != selectedPhoto.id
                 }
+
+                openedPhoto = nextPhoto
             },
             onSetMainPhoto = onSetMainPhoto
         )
@@ -145,7 +128,7 @@ fun RoutePhotoGallery(
 private fun PhotoThumbnail(
     photo: RoutePhotoEntity,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongPress: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -156,13 +139,13 @@ private fun PhotoThumbnail(
                         onClick()
                     },
                     onLongPress = {
-                        onLongClick()
+                        onLongPress()
                     }
                 )
             }
     ) {
-        AsyncImage(
-            model = File(photo.filePath),
+        LocalPhotoImage(
+            filePath = photo.filePath,
             contentDescription = "Routenfoto",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
@@ -174,7 +157,7 @@ private fun PhotoThumbnail(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.65f))
+                    .background(Color.Black.copy(alpha = 0.7f))
                     .padding(3.dp),
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall
@@ -185,7 +168,7 @@ private fun PhotoThumbnail(
 
 @Composable
 private fun PhotoViewerDialog(
-    photo: RoutePhotoEntity,
+    selectedPhoto: RoutePhotoEntity,
     photos: List<RoutePhotoEntity>,
     onDismiss: () -> Unit,
     onSelectPhoto: (RoutePhotoEntity) -> Unit,
@@ -201,8 +184,8 @@ private fun PhotoViewerDialog(
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                AsyncImage(
-                    model = File(photo.filePath),
+                LocalPhotoImage(
+                    filePath = selectedPhoto.filePath,
                     contentDescription = "Routenfoto vergrößert",
                     modifier = Modifier
                         .fillMaxWidth()
@@ -210,31 +193,42 @@ private fun PhotoViewerDialog(
                     contentScale = ContentScale.Fit
                 )
 
-                LazyRow(
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(
-                        items = photos,
-                        key = { it.id }
-                    ) { galleryPhoto ->
-                        PhotoSelectorThumbnail(
-                            photo = galleryPhoto,
-                            selected = galleryPhoto.id == photo.id,
-                            onClick = {
-                                onSelectPhoto(galleryPhoto)
-                            }
-                        )
+                    photos.forEach { photo ->
+                        Card(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .pointerInput(photo.id) {
+                                    detectTapGestures(
+                                        onTap = {
+                                            onSelectPhoto(photo)
+                                        }
+                                    )
+                                }
+                        ) {
+                            LocalPhotoImage(
+                                filePath = photo.filePath,
+                                contentDescription = "Foto auswählen",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
                 }
 
                 OutlinedButton(
                     onClick = {
-                        onSetMainPhoto(photo)
+                        onSetMainPhoto(selectedPhoto)
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (photo.isMainPhoto) {
+                        if (selectedPhoto.isMainPhoto) {
                             "Hauptfoto"
                         } else {
                             "Als Hauptfoto verwenden"
@@ -244,7 +238,7 @@ private fun PhotoViewerDialog(
 
                 TextButton(
                     onClick = {
-                        onDeletePhoto(photo)
+                        onDeletePhoto(selectedPhoto)
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -263,27 +257,46 @@ private fun PhotoViewerDialog(
 }
 
 @Composable
-private fun PhotoSelectorThumbnail(
-    photo: RoutePhotoEntity,
-    selected: Boolean,
-    onClick: () -> Unit
+private fun LocalPhotoImage(
+    filePath: String,
+    contentDescription: String,
+    modifier: Modifier,
+    contentScale: ContentScale
 ) {
-    Card(
-        modifier = Modifier
-            .size(56.dp)
-            .clickable(onClick = onClick)
-    ) {
-        AsyncImage(
-            model = File(photo.filePath),
-            contentDescription = "Foto auswählen",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-    }
-}
+    val context = LocalContext.current
 
-private fun photoIdOrNull(
-    photo: RoutePhotoEntity?
-): Long? {
-    return photo?.id
+    val imageBitmap = remember(filePath) {
+        val file = File(filePath)
+
+        if (!file.exists()) {
+            null
+        } else {
+            runCatching {
+                android.graphics.BitmapFactory
+                    .decodeFile(file.absolutePath)
+                    ?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+
+    if (imageBitmap != null) {
+        Image(
+            bitmap = imageBitmap,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = contentScale
+        )
+    } else {
+        Box(
+            modifier = modifier.background(
+                MaterialTheme.colorScheme.surfaceVariant
+            ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Foto nicht verfügbar",
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+    }
 }
