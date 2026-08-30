@@ -77,6 +77,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.charlie.ticklist.data.RoutePhotoEntity
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 
 
 
@@ -707,7 +708,7 @@ private fun CollectionRoutesScreen(
         }
     ) { padding ->
         LazyColumn(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(
@@ -718,20 +719,25 @@ private fun CollectionRoutesScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             item {
-                RouteHeader(sort, ascending) {
-                    if (sort == it) {
-                        ascending = !ascending
-                    } else {
-                        sort = it
-                        ascending = true
+                RouteHeader(
+                    column = sort,
+                    ascending = ascending,
+                    onSort = { selectedColumn ->
+                        if (sort == selectedColumn) {
+                            ascending = !ascending
+                        } else {
+                            sort = selectedColumn
+                            ascending = true
+                        }
                     }
-                }
+                )
             }
 
             items(
-                shown,
-                key = { it.id }
+                items = shown,
+                key = { route -> route.id }
             ) { route ->
+
                 RouteRow(
                     route = route,
                     mainPhoto = mainPhotoByRouteId[route.id],
@@ -781,10 +787,9 @@ private fun CollectionRoutesScreen(
                         photoViewerPhoto = photo
                     }
                 )
-
-
             }
         }
+
     }
 
     if (dialog) {
@@ -1493,6 +1498,7 @@ private fun RouteRow(
     onEdit: () -> Unit,
     onPhotoClick: (RoutePhotoEntity) -> Unit
 ) {
+
     var rowProgress by remember(route.id) {
         mutableStateOf(0f)
     }
@@ -1529,7 +1535,7 @@ private fun RouteRow(
 
                 Column(
                     modifier = Modifier
-                        .weight(1.15f)
+                        .width(48.dp)
                         .pointerInput(route.id, selectionMode) {
                             detectTapGestures(
                                 onTap = {
@@ -1555,10 +1561,13 @@ private fun RouteRow(
                     if (route.difficulty.isNotBlank()) {
                         Text(
                             text = route.difficulty,
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+
 
                 if (mainPhoto != null) {
                     RouteRowThumbnail(
@@ -1643,7 +1652,7 @@ private fun RouteRow(
 
 
 @Composable
-private fun RouteRowThumbnail(
+fun RouteRowThumbnail(
     photo: RoutePhotoEntity,
     onClick: () -> Unit,
     onLongClick: () -> Unit

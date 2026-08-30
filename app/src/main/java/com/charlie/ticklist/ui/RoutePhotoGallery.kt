@@ -170,7 +170,7 @@ private fun PhotoThumbnail(
 }
 
 @Composable
-private fun PhotoViewerDialog(
+fun PhotoViewerDialog(
     selectedPhoto: RoutePhotoEntity,
     photos: List<RoutePhotoEntity>,
     onDismiss: () -> Unit,
