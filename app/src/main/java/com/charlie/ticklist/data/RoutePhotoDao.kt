@@ -34,6 +34,20 @@ interface RoutePhotoDao {
         routeId: Long
     ): RoutePhotoEntity?
 
+    @Query(
+        """
+        SELECT route_photos.*
+        FROM route_photos
+        INNER JOIN routes
+            ON routes.id = route_photos.routeId
+        WHERE routes.collectionId = :collectionId
+          AND route_photos.isMainPhoto = 1
+        """
+    )
+    fun observeMainPhotosForCollection(
+        collectionId: Int
+    ): Flow<List<RoutePhotoEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPhoto(
         photo: RoutePhotoEntity

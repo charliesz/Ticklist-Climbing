@@ -71,6 +71,11 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
 private enum class StatusFilter { NONE, FLASH, TOP, ZONE, PROJECT }
@@ -468,6 +473,13 @@ private fun CollectionRoutesScreen(
     val routes by routeDao
         .observeRoutesForCollection(collectionId)
         .collectAsState(emptyList())
+    val mainPhotos by photoDao
+        .observeMainPhotosForCollection(collectionId)
+        .collectAsState(emptyList())
+
+    val mainPhotoByRouteId = mainPhotos.associateBy {
+        it.routeId
+    }
 
     var collectionName by remember { mutableStateOf("") }
 
@@ -715,6 +727,7 @@ private fun CollectionRoutesScreen(
             ) { route ->
                 RouteRow(
                     route = route,
+                    mainPhoto = mainPhotoByRouteId[route.id],
                     selectionMode = selectionMode,
                     selected = route.number in selected,
                     onSelectedChange = {
@@ -1458,99 +1471,217 @@ private fun RouteHeader(
 @Composable
 private fun RouteRow(
     route: RouteEntity,
+    mainPhoto: RoutePhotoEntity?,
     selectionMode: Boolean,
     selected: Boolean,
     onSelectedChange: () -> Unit,
     onStatusChange: (RouteStatus) -> Unit,
     onEdit: () -> Unit
 ) {
-    var progress by remember(route.id) {
+    var rowProgress by remember(route.id) {
         mutableStateOf(0f)
     }
 
-    val background =
+    val rowBackground =
         if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
             Color.Transparent
         }
 
-    Row(
-        Modifier
+    Box(
+        modifier = Modifier
             .fillMaxWidth()
-            .background(background)
-            .padding(6.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .background(rowBackground)
     ) {
-        if (selectionMode) {
-            Checkbox(
-                checked = selected,
-                onCheckedChange = {
-                    onSelectedChange()
-                }
-            )
-        }
-
-        Column(
-            Modifier
-                .weight(1.15f)
-                .pointerInput(route.id, selectionMode) {
-                    detectTapGestures(
-                        onTap = {
-                            if (selectionMode) {
-                                onSelectedChange()
-                            }
-                        },
-                        onLongPress = {
-                            if (!selectionMode) {
-                                onEdit()
-                            }
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (selectionMode) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = {
+                            onSelectedChange()
                         }
                     )
                 }
-        ) {
-            Text(
-                route.name,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
 
-            if (route.difficulty.isNotBlank()) {
-                Text(
-                    route.difficulty,
-                    style = MaterialTheme.typography.bodySmall
+                Column(
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .pointerInput(route.id, selectionMode) {
+                            detectTapGestures(
+                                onTap = {
+                                    if (selectionMode) {
+                                        onSelectedChange()
+                                    }
+                                },
+                                onLongPress = {
+                                    if (!selectionMode) {
+                                        onEdit()
+                                    }
+                                }
+                            )
+                        }
+                ) {
+                    Text(
+                        text = route.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (route.difficulty.isNotBlank()) {
+                        Text(
+                            text = route.difficulty,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                if (mainPhoto != null) {
+                    RouteRowThumbnail(
+                        photo = mainPhoto,
+                        onClick = {
+                            onEdit()
+                        },
+                        onLongClick = {
+                            onEdit()
+                        }
+                    )
+                }
+
+                StatusButton(
+                    label = "Flash",
+                    selected = route.status == "FLASH",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.FLASH)
+                    }
+                )
+
+                StatusButton(
+                    label = "Top",
+                    selected = route.status == "TOP",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.TOP)
+                    }
+                )
+
+                StatusButton(
+                    label = "Zone",
+                    selected = route.status == "ZONE",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.ZONE)
+                    }
+                )
+
+                StatusButton(
+                    label = "Projekt",
+                    selected = route.status == "PROJECT",
+                    modifier = Modifier.weight(1f),
+                    onProgress = {
+                        rowProgress = it
+                    },
+                    onComplete = {
+                        rowProgress = 0f
+                        onStatusChange(RouteStatus.PROJECT)
+                    }
                 )
             }
         }
 
-        listOf(
-            "Flash" to RouteStatus.FLASH,
-            "Top" to RouteStatus.TOP,
-            "Zone" to RouteStatus.ZONE,
-            "Projekt" to RouteStatus.PROJECT
-        ).forEach { (label, routeStatus) ->
-            StatusButton(
-                label = label,
-                selected = route.status == routeStatus.name,
-                modifier = Modifier.weight(1f),
-                onProgress = {
-                    progress = it
-                },
-                onComplete = {
-                    progress = 0f
-                    onStatusChange(routeStatus)
-                }
-            )
-        }
-
-        if (progress > 0f) {
+        if (rowProgress > 0f) {
             BorderProgress(
-                progress = progress,
+                progress = rowProgress,
                 color = MaterialTheme.colorScheme.primary
             )
         }
     }
 }
+
+
+@Composable
+private fun RouteRowThumbnail(
+    photo: RoutePhotoEntity,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val imageBitmap = remember(photo.filePath) {
+        val file = java.io.File(photo.filePath)
+
+        if (file.exists()) {
+            runCatching {
+                android.graphics.BitmapFactory
+                    .decodeFile(file.absolutePath)
+                    ?.asImageBitmap()
+            }.getOrNull()
+        } else {
+            null
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .pointerInput(photo.id) {
+                detectTapGestures(
+                    onTap = {
+                        onClick()
+                    },
+                    onLongPress = {
+                        onLongClick()
+                    }
+                )
+            }
+            .padding(horizontal = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (imageBitmap != null) {
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = "Hauptfoto der Route",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "–",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun StatusButton(
