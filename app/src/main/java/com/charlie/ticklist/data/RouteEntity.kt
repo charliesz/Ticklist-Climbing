@@ -2,14 +2,28 @@ package com.charlie.ticklist.data
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "routes")
+@Entity(
+    tableName = "routes",
+    indices = [
+        Index(
+            value = ["collectionId", "number"],
+            unique = true
+        )
+    ]
+)
 data class RouteEntity(
-    @PrimaryKey
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+
     val number: Int,
+
     val name: String,
+
     val difficulty: String,
+
     val status: String? = null,
 
     @ColumnInfo(name = "statusChangedAt")

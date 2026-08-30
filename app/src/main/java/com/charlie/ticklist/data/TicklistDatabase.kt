@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RouteEntity::class,
         CollectionEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class TicklistDatabase : RoomDatabase() {
@@ -82,6 +82,64 @@ abstract class TicklistDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+
+            override fun migrate(
+                db: SupportSQLiteDatabase
+            ) {
+                db.execSQL(
+                    """
+                    CREATE TABLE routes_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        number INTEGER NOT NULL,
+                        name TEXT NOT NULL,
+                        difficulty TEXT NOT NULL,
+                        status TEXT,
+                        statusChangedAt INTEGER,
+                        completedDate INTEGER,
+                        collectionId INTEGER NOT NULL DEFAULT 1
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    INSERT INTO routes_new (
+                        number,
+                        name,
+                        difficulty,
+                        status,
+                        statusChangedAt,
+                        completedDate,
+                        collectionId
+                    )
+                    SELECT
+                        number,
+                        name,
+                        difficulty,
+                        status,
+                        statusChangedAt,
+                        completedDate,
+                        collectionId
+                    FROM routes
+                    """
+                        .trimIndent()
+                )
+
+                db.execSQL("DROP TABLE routes")
+                db.execSQL("ALTER TABLE routes_new RENAME TO routes")
+
+                db.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS
+                    index_routes_collectionId_number
+                    ON routes(collectionId, number)
+                    """
+                        .trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: TicklistDatabase? = null
 
@@ -94,7 +152,8 @@ abstract class TicklistDatabase : RoomDatabase() {
                 )
                     .addMigrations(
                         MIGRATION_1_2,
-                        MIGRATION_2_3
+                        MIGRATION_2_3,
+                        MIGRATION_3_4
                     )
                     .build()
 

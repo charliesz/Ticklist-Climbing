@@ -14,8 +14,18 @@ interface RouteDao {
     @Query("SELECT * FROM routes ORDER BY number ASC")
     fun observeAllRoutes(): Flow<List<RouteEntity>>
 
-    @Query("SELECT * FROM routes WHERE number = :number LIMIT 1")
-    suspend fun getRoute(number: Int): RouteEntity?
+    @Query(
+        """
+        SELECT * FROM routes
+        WHERE number = :number
+          AND collectionId = :collectionId
+        LIMIT 1
+        """
+    )
+    suspend fun getRoute(
+        number: Int,
+        collectionId: Int = 1
+    ): RouteEntity?
 
     @Query(
         """
@@ -44,9 +54,9 @@ interface RouteDao {
             difficulty = :difficulty,
             status = :status,
             statusChangedAt = :statusChangedAt,
-            completedDate = :completedDate,
-            collectionId = :collectionId
+            completedDate = :completedDate
         WHERE number = :number
+          AND collectionId = :collectionId
         """
     )
     suspend fun updateRouteWithDates(
