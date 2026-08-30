@@ -33,5 +33,7 @@ data class RouteEntity(
     val completedDate: Long? = null,
 
     @ColumnInfo(name = "collectionId")
-    val collectionId: Int = 1
+    val collectionId: Int = 1,
+
+    val notes: String? = null
 )

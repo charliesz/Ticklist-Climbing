@@ -10,9 +10,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         RouteEntity::class,
-        CollectionEntity::class
+        CollectionEntity::class,
+        RoutePhotoEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class TicklistDatabase : RoomDatabase() {
@@ -20,6 +21,8 @@ abstract class TicklistDatabase : RoomDatabase() {
     abstract fun routeDao(): RouteDao
 
     abstract fun collectionDao(): CollectionDao
+
+    abstract fun routePhotoDao(): RoutePhotoDao
 
     companion object {
 
@@ -122,20 +125,58 @@ abstract class TicklistDatabase : RoomDatabase() {
                         completedDate,
                         collectionId
                     FROM routes
-                    """
-                        .trimIndent()
+                    """.trimIndent()
                 )
 
                 db.execSQL("DROP TABLE routes")
-                db.execSQL("ALTER TABLE routes_new RENAME TO routes")
+                db.execSQL(
+                    "ALTER TABLE routes_new RENAME TO routes"
+                )
 
                 db.execSQL(
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS
                     index_routes_collectionId_number
                     ON routes(collectionId, number)
+                    """.trimIndent()
+                )
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+
+            override fun migrate(
+                db: SupportSQLiteDatabase
+            ) {
+                db.execSQL(
                     """
-                        .trimIndent()
+                    ALTER TABLE routes
+                    ADD COLUMN notes TEXT
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS route_photos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        routeId INTEGER NOT NULL,
+                        filePath TEXT NOT NULL,
+                        isMainPhoto INTEGER NOT NULL DEFAULT 0,
+                        cropLeft REAL,
+                        cropTop REAL,
+                        cropRight REAL,
+                        cropBottom REAL,
+                        createdAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS
+                    index_route_photos_routeId
+                    ON route_photos(routeId)
+                    """.trimIndent()
                 )
             }
         }
@@ -143,7 +184,9 @@ abstract class TicklistDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: TicklistDatabase? = null
 
-        fun getDatabase(context: Context): TicklistDatabase {
+        fun getDatabase(
+            context: Context
+        ): TicklistDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
@@ -153,7 +196,8 @@ abstract class TicklistDatabase : RoomDatabase() {
                     .addMigrations(
                         MIGRATION_1_2,
                         MIGRATION_2_3,
-                        MIGRATION_3_4
+                        MIGRATION_3_4,
+                        MIGRATION_4_5
                     )
                     .build()
 
