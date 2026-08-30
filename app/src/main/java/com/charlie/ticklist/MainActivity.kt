@@ -75,6 +75,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import com.charlie.ticklist.data.RoutePhotoEntity
+import androidx.compose.foundation.layout.Spacer
+
+
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -519,6 +523,9 @@ private fun CollectionRoutesScreen(
     var bulkStatus by remember { mutableStateOf<RouteStatus?>(null) }
     var bulkDateEnabled by remember { mutableStateOf(false) }
     var bulkDate by remember { mutableStateOf<Long?>(null) }
+    var photoViewerPhoto by remember {
+        mutableStateOf<RoutePhotoEntity?>(null)
+    }
 
     val shown = routes
         .filter {
@@ -741,6 +748,16 @@ private fun CollectionRoutesScreen(
                     onStatusChange = { newStatus ->
                         val now = System.currentTimeMillis()
 
+                        val completedDate =
+                            if (
+                                newStatus == RouteStatus.TOP ||
+                                newStatus == RouteStatus.FLASH
+                            ) {
+                                route.completedDate ?: now
+                            } else {
+                                null
+                            }
+
                         scope.launch {
                             routeDao.updateRouteWithDates(
                                 number = route.number,
@@ -748,15 +765,7 @@ private fun CollectionRoutesScreen(
                                 difficulty = route.difficulty,
                                 status = newStatus.name,
                                 statusChangedAt = now,
-                                completedDate =
-                                    if (
-                                        newStatus == RouteStatus.TOP ||
-                                        newStatus == RouteStatus.FLASH
-                                    ) {
-                                        route.completedDate ?: now
-                                    } else {
-                                        null
-                                    },
+                                completedDate = completedDate,
                                 collectionId = collectionId
                             )
 
@@ -767,8 +776,13 @@ private fun CollectionRoutesScreen(
                     },
                     onEdit = {
                         openRoute(route)
+                    },
+                    onPhotoClick = { photo ->
+                        photoViewerPhoto = photo
                     }
                 )
+
+
             }
         }
     }
@@ -1476,7 +1490,8 @@ private fun RouteRow(
     selected: Boolean,
     onSelectedChange: () -> Unit,
     onStatusChange: (RouteStatus) -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onPhotoClick: (RoutePhotoEntity) -> Unit
 ) {
     var rowProgress by remember(route.id) {
         mutableStateOf(0f)
@@ -1549,13 +1564,19 @@ private fun RouteRow(
                     RouteRowThumbnail(
                         photo = mainPhoto,
                         onClick = {
-                            onEdit()
+                            onPhotoClick(mainPhoto)
                         },
                         onLongClick = {
                             onEdit()
                         }
                     )
+                } else {
+                    Spacer(
+                        modifier = Modifier.size(48.dp)
+                    )
                 }
+
+
 
                 StatusButton(
                     label = "Flash",

@@ -3,6 +3,7 @@ package com.charlie.ticklist.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,13 +27,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -106,15 +110,17 @@ fun RoutePhotoGallery(
             onDismiss = {
                 openedPhoto = null
             },
-            onSelectPhoto = { photo ->
-                openedPhoto = photo
+            onSelectPhoto = {
+                openedPhoto = it
             },
             onDeletePhoto = { photo ->
                 onDeletePhoto(photo)
 
-                openedPhoto = photos.firstOrNull {
+                val nextPhoto = photos.firstOrNull {
                     it.id != photo.id
                 }
+
+                openedPhoto = nextPhoto
             },
             onSetMainPhoto = onSetMainPhoto
         )
@@ -154,9 +160,7 @@ private fun PhotoThumbnail(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(
-                        Color.Black.copy(alpha = 0.7f)
-                    )
+                    .background(Color.Black.copy(alpha = 0.7f))
                     .padding(3.dp),
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall
@@ -174,30 +178,59 @@ private fun PhotoViewerDialog(
     onDeletePhoto: (RoutePhotoEntity) -> Unit,
     onSetMainPhoto: (RoutePhotoEntity) -> Unit
 ) {
+    var scale by remember(selectedPhoto.id) {
+        mutableFloatStateOf(1f)
+    }
+
+    var offset by remember(selectedPhoto.id) {
+        mutableStateOf(Offset.Zero)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("Routenfotos")
+            Text("Routenfoto")
         },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                LocalPhotoImage(
-                    filePath = selectedPhoto.filePath,
-                    contentDescription = "Routenfoto vergrößert",
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(280.dp),
-                    contentScale = ContentScale.Fit
+                        .height(320.dp)
+                        .background(Color.Black)
+                        .pointerInput(selectedPhoto.id) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                offset += pan
+                            }
+                        }
+                ) {
+                    LocalPhotoImage(
+                        filePath = selectedPhoto.filePath,
+                        contentDescription = "Routenfoto vergrößert",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                translationX = offset.x,
+                                translationY = offset.y
+                            ),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+
+                Text(
+                    text = "Ziehen zum Verschieben · Pinch zum Zoomen",
+                    style = MaterialTheme.typography.bodySmall
                 )
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(
-                            rememberScrollState()
-                        ),
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     photos.forEach { photo ->
