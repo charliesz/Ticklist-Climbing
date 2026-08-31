@@ -72,6 +72,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -1482,45 +1483,118 @@ private fun RouteHeader(
     onSort: (SortColumn) -> Unit
 ) {
     Row(
-        Modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(6.dp)
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        listOf(
-            "Route" to SortColumn.ROUTE,
-            "Flash" to SortColumn.FLASH,
-            "Top" to SortColumn.TOP,
-            "Zone" to SortColumn.ZONE,
-            "Projekt" to SortColumn.PROJECT
-        ).forEach { (label, sortColumn) ->
-            TextButton(
-                onClick = {
-                    onSort(sortColumn)
+        TextButton(
+            onClick = {
+                onSort(SortColumn.ROUTE)
+            },
+            modifier = Modifier
+                .width(28.dp)
+                .padding(end = 2.dp),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Text(
+                text = "Route" + if (column == SortColumn.ROUTE) {
+                    if (ascending) " ↑" else " ↓"
+                } else {
+                    ""
                 },
-                modifier = Modifier.weight(
-                    if (sortColumn == SortColumn.ROUTE) {
-                        1.15f
-                    } else {
-                        1f
-                    }
-                ),
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                val arrow =
-                    if (sortColumn == column) {
-                        if (ascending) " ↑" else " ↓"
-                    } else {
-                        ""
-                    }
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
-                Text(
-                    text = label + arrow,
-                    fontSize = 11.sp,
-                    maxLines = 1
-                )
-            }
+        Spacer(
+            modifier = Modifier.width(48.dp)
+        )
+
+        Spacer(
+            modifier = Modifier.width(10.dp)
+        )
+
+        TextButton(
+            onClick = {
+                onSort(SortColumn.FLASH)
+            },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Text(
+                text = "Flash" + if (column == SortColumn.FLASH) {
+                    if (ascending) " ↑" else " ↓"
+                } else {
+                    ""
+                },
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        TextButton(
+            onClick = {
+                onSort(SortColumn.TOP)
+            },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Text(
+                text = "Top" + if (column == SortColumn.TOP) {
+                    if (ascending) " ↑" else " ↓"
+                } else {
+                    ""
+                },
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        TextButton(
+            onClick = {
+                onSort(SortColumn.ZONE)
+            },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Text(
+                text = "Zone" + if (column == SortColumn.ZONE) {
+                    if (ascending) " ↑" else " ↓"
+                } else {
+                    ""
+                },
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        TextButton(
+            onClick = {
+                onSort(SortColumn.PROJECT)
+            },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Text(
+                text = "Projekt" + if (column == SortColumn.PROJECT) {
+                    if (ascending) " ↑" else " ↓"
+                } else {
+                    ""
+                },
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
+
+
 }
 
 @Composable
@@ -1571,7 +1645,8 @@ private fun RouteRow(
 
                 Column(
                     modifier = Modifier
-                        .width(36.dp)
+                        .width(28.dp)
+                        .padding(end = 2.dp)
                         .pointerInput(route.id, selectionMode) {
                             detectTapGestures(
                                 onTap = {
@@ -1627,7 +1702,9 @@ private fun RouteRow(
                     )
                 }
 
-
+                Spacer(
+                    modifier = Modifier.width(10.dp)
+                )
 
 
                 StatusButton(
