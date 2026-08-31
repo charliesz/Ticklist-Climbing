@@ -1493,8 +1493,7 @@ private fun RouteHeader(
                 onSort(SortColumn.ROUTE)
             },
             modifier = Modifier
-                .width(28.dp)
-                .padding(end = 2.dp),
+                .width(86.dp),
             contentPadding = PaddingValues(0.dp)
         ) {
             Text(
@@ -1509,13 +1508,7 @@ private fun RouteHeader(
             )
         }
 
-        Spacer(
-            modifier = Modifier.width(48.dp)
-        )
 
-        Spacer(
-            modifier = Modifier.width(10.dp)
-        )
 
         TextButton(
             onClick = {
