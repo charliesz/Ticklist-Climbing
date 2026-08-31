@@ -1830,11 +1830,11 @@ fun RouteRowThumbnail(
                         onLongClick()
                     }
                 )
-            }
-            .padding(horizontal = 8.dp),
+            },
         contentAlignment = Alignment.Center
     ) {
-        if (imageBitmap != null) {
+
+    if (imageBitmap != null) {
             Image(
                 bitmap = imageBitmap,
                 contentDescription = "Hauptfoto der Route",
