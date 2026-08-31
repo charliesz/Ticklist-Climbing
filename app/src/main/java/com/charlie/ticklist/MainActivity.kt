@@ -1571,7 +1571,7 @@ private fun RouteRow(
 
                 Column(
                     modifier = Modifier
-                        .width(48.dp)
+                        .width(36.dp)
                         .pointerInput(route.id, selectionMode) {
                             detectTapGestures(
                                 onTap = {
@@ -1586,7 +1586,8 @@ private fun RouteRow(
                                 }
                             )
                         }
-                ) {
+                )
+                {
                     Text(
                         text = route.name,
                         style = MaterialTheme.typography.titleSmall,
@@ -1753,7 +1754,7 @@ fun RouteRowThumbnail(
                     }
                 )
             }
-            .padding(horizontal = 2.dp),
+            .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         if (imageBitmap != null) {
