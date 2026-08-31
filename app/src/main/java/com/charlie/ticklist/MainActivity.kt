@@ -78,10 +78,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.charlie.ticklist.data.RoutePhotoEntity
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextAlign
 import com.charlie.ticklist.ui.PhotoViewerDialog
-
-
-
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -1492,8 +1490,7 @@ private fun RouteHeader(
             onClick = {
                 onSort(SortColumn.ROUTE)
             },
-            modifier = Modifier
-                .width(86.dp),
+            modifier = Modifier.width(86.dp),
             contentPadding = PaddingValues(0.dp)
         ) {
             Text(
@@ -1502,13 +1499,13 @@ private fun RouteHeader(
                 } else {
                     ""
                 },
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-
-
 
         TextButton(
             onClick = {
@@ -1827,7 +1824,7 @@ fun RouteRowThumbnail(
         contentAlignment = Alignment.Center
     ) {
 
-    if (imageBitmap != null) {
+        if (imageBitmap != null) {
             Image(
                 bitmap = imageBitmap,
                 contentDescription = "Hauptfoto der Route",
