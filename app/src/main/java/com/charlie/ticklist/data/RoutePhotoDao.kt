@@ -26,6 +26,17 @@ interface RoutePhotoDao {
         """
         SELECT * FROM route_photos
         WHERE routeId = :routeId
+        ORDER BY isMainPhoto DESC, createdAt ASC
+        """
+    )
+    suspend fun getPhotosForRoute(
+        routeId: Long
+    ): List<RoutePhotoEntity>
+
+    @Query(
+        """
+        SELECT * FROM route_photos
+        WHERE routeId = :routeId
           AND isMainPhoto = 1
         LIMIT 1
         """

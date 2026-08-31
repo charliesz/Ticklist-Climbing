@@ -183,7 +183,7 @@ private fun CollectionsScreen(
             FloatingActionButton(
                 onClick = {
                     newName = ""
-                    newCount = "90"
+                    newCount = ""
                     newDialog = true
                 }
             ) {
@@ -528,7 +528,9 @@ private fun CollectionRoutesScreen(
     var photoViewerPhoto by remember {
         mutableStateOf<RoutePhotoEntity?>(null)
     }
-
+    var photoViewerPhotos by remember {
+        mutableStateOf<List<RoutePhotoEntity>>(emptyList())
+    }
     val shown = routes
         .filter {
             routeFilter(it.status) in filters
@@ -785,7 +787,13 @@ private fun CollectionRoutesScreen(
                         openRoute(route)
                     },
                     onPhotoClick = { photo ->
-                        photoViewerPhoto = photo
+                        scope.launch {
+                            photoViewerPhotos = photoDao.getPhotosForRoute(
+                                routeId = photo.routeId
+                            )
+
+                            photoViewerPhoto = photo
+                        }
                     }
                 )
             }
@@ -795,7 +803,7 @@ private fun CollectionRoutesScreen(
     photoViewerPhoto?.let { photo ->
         PhotoViewerDialog(
             selectedPhoto = photo,
-            photos = mainPhotos,
+            photos = photoViewerPhotos,
             onDismiss = {
                 photoViewerPhoto = null
             },
@@ -1694,13 +1702,11 @@ private fun RoutePhotoPlaceholder(
             .size(48.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = {
-                        onClick()
-                    },
                     onLongPress = {
                         onLongClick()
                     }
                 )
+
             }
             .background(
                 MaterialTheme.colorScheme.surfaceVariant
