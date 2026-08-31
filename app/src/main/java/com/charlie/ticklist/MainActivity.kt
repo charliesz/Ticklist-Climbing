@@ -76,8 +76,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.charlie.ticklist.data.RoutePhotoEntity
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import com.charlie.ticklist.ui.PhotoViewerDialog
+
 
 
 
@@ -790,6 +791,33 @@ private fun CollectionRoutesScreen(
             }
         }
 
+    }
+    photoViewerPhoto?.let { photo ->
+        PhotoViewerDialog(
+            selectedPhoto = photo,
+            photos = mainPhotos,
+            onDismiss = {
+                photoViewerPhoto = null
+            },
+            onSelectPhoto = { selectedPhoto ->
+                photoViewerPhoto = selectedPhoto
+            },
+            onDeletePhoto = { photoToDelete ->
+                scope.launch {
+                    photoRepository.deletePhoto(photoToDelete)
+                    photoViewerPhoto = null
+                }
+            },
+            onSetMainPhoto = { mainPhoto ->
+                scope.launch {
+                    photoRepository.setMainPhoto(mainPhoto)
+
+                    photoViewerPhoto = mainPhoto.copy(
+                        isMainPhoto = true
+                    )
+                }
+            }
+        )
     }
 
     if (dialog) {
@@ -1580,10 +1608,16 @@ private fun RouteRow(
                         }
                     )
                 } else {
-                    Spacer(
-                        modifier = Modifier.size(48.dp)
+                    RoutePhotoPlaceholder(
+                        onClick = {
+                            onEdit()
+                        },
+                        onLongClick = {
+                            onEdit()
+                        }
                     )
                 }
+
 
 
 
@@ -1650,6 +1684,35 @@ private fun RouteRow(
     }
 }
 
+@Composable
+private fun RoutePhotoPlaceholder(
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = {
+                        onClick()
+                    },
+                    onLongPress = {
+                        onLongClick()
+                    }
+                )
+            }
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "+",
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
 
 @Composable
 fun RouteRowThumbnail(
