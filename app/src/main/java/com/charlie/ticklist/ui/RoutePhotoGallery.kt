@@ -115,12 +115,9 @@ fun RoutePhotoGallery(
             },
             onDeletePhoto = { photo ->
                 onDeletePhoto(photo)
-
-                val nextPhoto = photos.firstOrNull {
+                openedPhoto = photos.firstOrNull {
                     it.id != photo.id
                 }
-
-                openedPhoto = nextPhoto
             },
             onSetMainPhoto = onSetMainPhoto
         )
@@ -195,7 +192,9 @@ fun PhotoViewerDialog(
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
+                LocalPhotoImage(
+                    filePath = selectedPhoto.filePath,
+                    contentDescription = "Routenfoto vergrößert",
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(320.dp)
@@ -206,25 +205,13 @@ fun PhotoViewerDialog(
                                 offset += pan
                             }
                         }
-                ) {
-                    LocalPhotoImage(
-                        filePath = selectedPhoto.filePath,
-                        contentDescription = "Routenfoto vergrößert",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer(
-                                scaleX = scale,
-                                scaleY = scale,
-                                translationX = offset.x,
-                                translationY = offset.y
-                            ),
-                        contentScale = ContentScale.Fit
-                    )
-                }
-
-                Text(
-                    text = "Ziehen zum Verschieben · Pinch zum Zoomen",
-                    style = MaterialTheme.typography.bodySmall
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offset.x,
+                            translationY = offset.y
+                        ),
+                    contentScale = ContentScale.Fit
                 )
 
                 Row(
@@ -262,7 +249,7 @@ fun PhotoViewerDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = if (selectedPhoto.isMainPhoto) {
+                        if (selectedPhoto.isMainPhoto) {
                             "Hauptfoto"
                         } else {
                             "Als Hauptfoto verwenden"
@@ -281,9 +268,7 @@ fun PhotoViewerDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = onDismiss
-            ) {
+            Button(onClick = onDismiss) {
                 Text("Schließen")
             }
         }

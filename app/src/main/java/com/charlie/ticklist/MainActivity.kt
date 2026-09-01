@@ -1794,8 +1794,10 @@ fun RouteRowThumbnail(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val imageBitmap = remember(photo.filePath) {
-        val file = java.io.File(photo.filePath)
+    val previewPath = photo.thumbnailPath ?: photo.filePath
+
+    val imageBitmap = remember(previewPath) {
+        val file = java.io.File(previewPath)
 
         if (file.exists()) {
             runCatching {
@@ -1823,7 +1825,6 @@ fun RouteRowThumbnail(
             },
         contentAlignment = Alignment.Center
     ) {
-
         if (imageBitmap != null) {
             Image(
                 bitmap = imageBitmap,
@@ -1848,7 +1849,6 @@ fun RouteRowThumbnail(
         }
     }
 }
-
 
 @Composable
 private fun StatusButton(
