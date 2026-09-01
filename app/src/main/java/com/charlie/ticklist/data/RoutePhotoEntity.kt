@@ -18,6 +18,8 @@ data class RoutePhotoEntity(
 
     val filePath: String,
 
+    val thumbnailPath: String? = null,
+
     val isMainPhoto: Boolean = false,
 
     val cropLeft: Float? = null,

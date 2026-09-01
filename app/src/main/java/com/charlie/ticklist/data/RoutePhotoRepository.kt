@@ -24,9 +24,14 @@ class RoutePhotoRepository(
             routeId = route.id
         )
 
+        val thumbnailPath = PhotoStorage.createThumbnail(
+            originalFilePath = filePath
+        )
+
         val photo = RoutePhotoEntity(
             routeId = route.id,
             filePath = filePath,
+            thumbnailPath = thumbnailPath,
             isMainPhoto = isMainPhoto,
             createdAt = System.currentTimeMillis()
         )
@@ -36,7 +41,31 @@ class RoutePhotoRepository(
         return photo.copy(id = photoId)
     }
 
-    suspend fun setMainPhoto(photo: RoutePhotoEntity) {
+    suspend fun ensureThumbnail(
+        photo: RoutePhotoEntity
+    ): RoutePhotoEntity {
+        val existingThumbnail = photo.thumbnailPath
+
+        if (PhotoStorage.fileExists(existingThumbnail)) {
+            return photo
+        }
+
+        val thumbnailPath = PhotoStorage.createThumbnail(
+            originalFilePath = photo.filePath
+        )
+
+        val updatedPhoto = photo.copy(
+            thumbnailPath = thumbnailPath
+        )
+
+        photoDao.updatePhoto(updatedPhoto)
+
+        return updatedPhoto
+    }
+
+    suspend fun setMainPhoto(
+        photo: RoutePhotoEntity
+    ) {
         photoDao.clearMainPhoto(photo.routeId)
 
         photoDao.updatePhoto(
@@ -44,12 +73,21 @@ class RoutePhotoRepository(
         )
     }
 
-    suspend fun deletePhoto(photo: RoutePhotoEntity) {
+    suspend fun deletePhoto(
+        photo: RoutePhotoEntity
+    ) {
         photoDao.deletePhoto(photo)
+
         PhotoStorage.deletePhoto(photo.filePath)
+
+        PhotoStorage.deleteThumbnail(
+            photo.thumbnailPath
+        )
     }
 
-    suspend fun deleteAllPhotos(route: RouteEntity) {
+    suspend fun deleteAllPhotos(
+        route: RouteEntity
+    ) {
         photoDao.deletePhotosForRoute(route.id)
 
         PhotoStorage.deleteAllPhotosForRoute(
