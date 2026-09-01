@@ -80,6 +80,9 @@ import com.charlie.ticklist.data.RoutePhotoEntity
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.style.TextAlign
 import com.charlie.ticklist.ui.PhotoViewerDialog
+import com.charlie.ticklist.data.PhotoStorage
+
+
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -485,7 +488,13 @@ private fun CollectionRoutesScreen(
     val mainPhotoByRouteId = mainPhotos.associateBy {
         it.routeId
     }
-
+    LaunchedEffect(mainPhotos) {
+        mainPhotos.forEach { photo ->
+            if (!PhotoStorage.fileExists(photo.thumbnailPath)) {
+                photoRepository.ensureThumbnail(photo)
+            }
+        }
+    }
     var collectionName by remember { mutableStateOf("") }
 
     LaunchedEffect(collectionId) {
