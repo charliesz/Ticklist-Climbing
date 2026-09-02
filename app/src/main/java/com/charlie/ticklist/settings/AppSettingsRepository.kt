@@ -16,7 +16,8 @@ data class AppSettings(
     val hapticFeedbackEnabled: Boolean = true,
     val statusConfirmationDurationMs: Int = 1500,
     val darkModeEnabled: Boolean = false,
-    val celebrationMessagesEnabled: Boolean = true
+    val celebrationMessagesEnabled: Boolean = true,
+    val manualSuccessCount: Int = 0
 )
 
 class AppSettingsRepository(
@@ -34,6 +35,9 @@ class AppSettingsRepository(
 
         val celebrationMessagesEnabled =
             booleanPreferencesKey("celebration_messages_enabled")
+
+        val manualSuccessCount =
+            intPreferencesKey("manual_success_count")
     }
 
     val settings: Flow<AppSettings> =
@@ -43,13 +47,20 @@ class AppSettingsRepository(
                     preferences[Keys.hapticFeedbackEnabled] ?: true,
 
                 statusConfirmationDurationMs =
-                    preferences[Keys.statusConfirmationDurationMs] ?: 1500,
+                    preferences[
+                        Keys.statusConfirmationDurationMs
+                    ] ?: 1500,
 
                 darkModeEnabled =
                     preferences[Keys.darkModeEnabled] ?: false,
 
                 celebrationMessagesEnabled =
-                    preferences[Keys.celebrationMessagesEnabled] ?: true
+                    preferences[
+                        Keys.celebrationMessagesEnabled
+                    ] ?: true,
+
+                manualSuccessCount =
+                    preferences[Keys.manualSuccessCount] ?: 0
             )
         }
 
@@ -65,7 +76,9 @@ class AppSettingsRepository(
         durationMs: Int
     ) {
         context.appSettingsDataStore.edit { preferences ->
-            preferences[Keys.statusConfirmationDurationMs] = durationMs
+            preferences[
+                Keys.statusConfirmationDurationMs
+            ] = durationMs
         }
     }
 
@@ -81,7 +94,28 @@ class AppSettingsRepository(
         enabled: Boolean
     ) {
         context.appSettingsDataStore.edit { preferences ->
-            preferences[Keys.celebrationMessagesEnabled] = enabled
+            preferences[
+                Keys.celebrationMessagesEnabled
+            ] = enabled
+        }
+    }
+
+    suspend fun incrementManualSuccessCount(): Int {
+        var newCount = 0
+
+        context.appSettingsDataStore.edit { preferences ->
+            newCount =
+                (preferences[Keys.manualSuccessCount] ?: 0) + 1
+
+            preferences[Keys.manualSuccessCount] = newCount
+        }
+
+        return newCount
+    }
+
+    suspend fun resetManualSuccessCount() {
+        context.appSettingsDataStore.edit { preferences ->
+            preferences[Keys.manualSuccessCount] = 0
         }
     }
 }
