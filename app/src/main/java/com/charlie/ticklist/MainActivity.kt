@@ -85,8 +85,11 @@ import com.charlie.ticklist.settings.AppSettings
 import com.charlie.ticklist.settings.AppSettingsRepository
 import com.charlie.ticklist.settings.SettingsScreen
 import com.charlie.ticklist.ui.PhotoViewerDialog
+import com.charlie.ticklist.ui.CelebrationPopup
 import com.charlie.ticklist.ui.RoutePhotoEditor
+import com.charlie.ticklist.ui.randomCelebrationMessage
 import com.charlie.ticklist.ui.theme.TicklistClimbingTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -202,6 +205,7 @@ private fun TicklistApp(
             CollectionRoutesScreen(
                 collectionId = collectionId!!,
                 settings = settings,
+                settingsRepository = settingsRepository,
                 onBack = {
                     collectionId = null
                 },
@@ -570,6 +574,7 @@ private fun CollectionsScreen(
 private fun CollectionRoutesScreen(
     collectionId: Int,
     settings: AppSettings,
+    settingsRepository: AppSettingsRepository,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -583,6 +588,17 @@ private fun CollectionRoutesScreen(
     }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+
+    var celebrationMessage by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    LaunchedEffect(celebrationMessage) {
+        if (celebrationMessage != null) {
+            delay(3000)
+            celebrationMessage = null
+        }
+    }
 
     val routes by routeDao
         .observeRoutesForCollection(collectionId)
@@ -914,6 +930,13 @@ private fun CollectionRoutesScreen(
                     },
                     onStatusChange = { newStatus ->
                         val now = System.currentTimeMillis()
+                        val isSuccessfulStatus =
+                            newStatus == RouteStatus.TOP ||
+                                    newStatus == RouteStatus.FLASH
+                        val isNewManualSuccess =
+                            isSuccessfulStatus &&
+                                    route.status != newStatus.name
+
                         scope.launch {
                             routeDao.updateRouteWithDates(
                                 number = route.number,
@@ -922,20 +945,28 @@ private fun CollectionRoutesScreen(
                                 status = newStatus.name,
                                 statusChangedAt = now,
                                 completedDate =
-                                    if (
-                                        newStatus == RouteStatus.TOP ||
-                                        newStatus == RouteStatus.FLASH
-                                    ) {
+                                    if (isSuccessfulStatus) {
                                         route.completedDate ?: now
                                     } else {
                                         null
                                     },
                                 collectionId = collectionId
                             )
+
                             if (settings.hapticFeedbackEnabled) {
                                 haptic.performHapticFeedback(
                                     HapticFeedbackType.LongPress
                                 )
+                            }
+
+                            if (
+                                isNewManualSuccess &&
+                                settings.celebrationMessagesEnabled
+                            ) {
+                                val count = settingsRepository.incrementManualSuccessCount()
+                                if (count % 1 == 0) {
+                                    celebrationMessage = settingsRepository.nextCelebrationMessage()
+                                }
                             }
                         }
                     },
@@ -975,6 +1006,17 @@ private fun CollectionRoutesScreen(
                 }
             }
         )
+    }
+
+    celebrationMessage?.let { message ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 96.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            CelebrationPopup(message = message)
+        }
     }
 
     if (dialog) {
