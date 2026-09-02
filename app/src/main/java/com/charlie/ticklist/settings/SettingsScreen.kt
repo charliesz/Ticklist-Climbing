@@ -142,12 +142,12 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Erfolgsmeldungen",
+                        text = "Debug-Information",
                         style = MaterialTheme.typography.titleMedium
                     )
 
                     SettingsCheckboxRow(
-                        label = "Erfolgsmeldungen anzeigen",
+                        label = "Debug-Informationen bei Absturz sichern",
                         checked = settings.celebrationMessagesEnabled,
                         onCheckedChange =
                             onCelebrationMessagesChanged

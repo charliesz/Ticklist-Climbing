@@ -39,12 +39,17 @@ fun CelebrationPopup(
 
 fun randomCelebrationMessage(): String {
     return listOf(
-        "You rock!",
-        "Nice send!",
-        "Crushed it!",
-        "Strong move!",
-        "Keep climbing!",
-        "Another one down!",
-        "Climbing mode: ON!"
+        "Endlich mal festgehalten!",
+        "Nicht Kletteräffchen - Klättermätzchen!",
+        "Ne Frauen-Route war das nicht!",
+        "Ballarina!",
+        "Können die auch etwas schwieriges schrauben!",
+        "Auch du hast es jetzt geschafft!",
+        "Mega Dude!",
+        "Fast so elegant wie Lotti!",
+        "Reichweite ist auch eine Technik!",
+        "Schön klettern kann jeder!",
+        "Endlich!",
+        "Lassen wir gelten!"
     ).random()
 }
