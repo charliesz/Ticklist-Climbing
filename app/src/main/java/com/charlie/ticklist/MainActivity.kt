@@ -126,53 +126,93 @@ private fun TicklistApp(
     settingsRepository: AppSettingsRepository
 ) {
     val scope = rememberCoroutineScope()
-    var collectionId by remember { mutableStateOf<Int?>(null) }
-    var showSettings by remember { mutableStateOf(false) }
 
-    if (showSettings) {
-        SettingsScreen(
-            settings = settings,
-            onBack = {
+    var collectionId by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    var showSettings by remember {
+        mutableStateOf(false)
+    }
+
+    when {
+        showSettings -> {
+            BackHandler(
+                enabled = true
+            ) {
                 showSettings = false
-            },
-            onHapticFeedbackChanged = { enabled ->
-                scope.launch {
-                    settingsRepository.setHapticFeedbackEnabled(enabled)
-                }
-            },
-            onDurationChanged = { durationMs ->
-                scope.launch {
-                    settingsRepository
-                        .setStatusConfirmationDurationMs(durationMs)
-                }
-            },
-            onDarkModeChanged = { enabled ->
-                scope.launch {
-                    settingsRepository.setDarkModeEnabled(enabled)
-                }
-            },
-            onCelebrationMessagesChanged = { enabled ->
-                scope.launch {
-                    settingsRepository
-                        .setCelebrationMessagesEnabled(enabled)
-                }
             }
-        )
-    } else if (collectionId == null) {
-        CollectionsScreen(
-            onOpenCollection = { collectionId = it },
-            onOpenSettings = { showSettings = true }
-        )
-    } else {
-        BackHandler { collectionId = null }
-        CollectionRoutesScreen(
-            collectionId = collectionId!!,
-            settings = settings,
-            onBack = { collectionId = null },
-            onOpenSettings = { showSettings = true }
-        )
+
+            SettingsScreen(
+                settings = settings,
+                onBack = {
+                    showSettings = false
+                },
+                onHapticFeedbackChanged = { enabled ->
+                    scope.launch {
+                        settingsRepository.setHapticFeedbackEnabled(
+                            enabled
+                        )
+                    }
+                },
+                onDurationChanged = { durationMs ->
+                    scope.launch {
+                        settingsRepository
+                            .setStatusConfirmationDurationMs(
+                                durationMs
+                            )
+                    }
+                },
+                onDarkModeChanged = { enabled ->
+                    scope.launch {
+                        settingsRepository.setDarkModeEnabled(
+                            enabled
+                        )
+                    }
+                },
+                onCelebrationMessagesChanged = { enabled ->
+                    scope.launch {
+                        settingsRepository
+                            .setCelebrationMessagesEnabled(
+                                enabled
+                            )
+                    }
+                }
+            )
+        }
+
+        collectionId == null -> {
+            CollectionsScreen(
+                onOpenCollection = { id ->
+                    collectionId = id
+                },
+                onOpenSettings = {
+                    showSettings = true
+                }
+            )
+        }
+
+        else -> {
+            BackHandler(
+                enabled = true
+            ) {
+                collectionId = null
+            }
+
+            CollectionRoutesScreen(
+                collectionId = collectionId!!,
+                settings = settings,
+                onBack = {
+                    collectionId = null
+                },
+                onOpenSettings = {
+                    showSettings = true
+                }
+            )
+        }
     }
 }
+
 
 @Composable
 private fun CollectionsScreen(
