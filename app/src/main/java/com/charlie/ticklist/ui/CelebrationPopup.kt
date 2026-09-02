@@ -36,29 +36,3 @@ fun CelebrationPopup(
         )
     }
 }
-
-fun randomCelebrationMessage(): String {
-    return listOf(
-        "Endlich mal festgehalten!",
-        "Nicht Kletteräffchen - Klättermätzchen!",
-        "Ne Frauen-Route war das nicht!",
-        "Ballarina!",
-        "Können die auch etwas schwieriges schrauben!",
-        "Auch du hast es jetzt geschafft!",
-        "Mega Dude!",
-        "Fast so elegant wie Lotti!",
-        "Reichweite ist auch eine Technik!",
-        "Schön klettern kann jeder!",
-        "Einfach war das nicht!",
-        "Easy Peasy!",
-        "Manche leute haben es einfach drauf!",
-        "Lass es nächstes Mal schwieriger ausseh",
-        "Ali Cato!",
-        "Es kommt nicht immer auf die Größe an!",
-        "Stabil!",
-        "Das merkst du noch morgen!",
-        "Endlich!",
-        "Schön ist anders!",
-        "Lassen wir gelten!"
-    ).random()
-}

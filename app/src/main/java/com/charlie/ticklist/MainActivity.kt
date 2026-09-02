@@ -87,7 +87,6 @@ import com.charlie.ticklist.settings.SettingsScreen
 import com.charlie.ticklist.ui.PhotoViewerDialog
 import com.charlie.ticklist.ui.CelebrationPopup
 import com.charlie.ticklist.ui.RoutePhotoEditor
-import com.charlie.ticklist.ui.randomCelebrationMessage
 import com.charlie.ticklist.ui.theme.TicklistClimbingTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -95,6 +94,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import com.charlie.ticklist.settings.AboutScreen
+
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
 private enum class StatusFilter { NONE, FLASH, TOP, ZONE, PROJECT }
@@ -138,11 +139,25 @@ private fun TicklistApp(
         mutableStateOf(false)
     }
 
+    var showAbout by remember {
+        mutableStateOf(false)
+    }
+
     when {
+        showAbout -> {
+            BackHandler {
+                showAbout = false
+            }
+
+            AboutScreen(
+                onBack = {
+                    showAbout = false
+                }
+            )
+        }
+
         showSettings -> {
-            BackHandler(
-                enabled = true
-            ) {
+            BackHandler {
                 showSettings = false
             }
 
@@ -150,6 +165,9 @@ private fun TicklistApp(
                 settings = settings,
                 onBack = {
                     showSettings = false
+                },
+                onAboutClick = {
+                    showAbout = true
                 },
                 onHapticFeedbackChanged = { enabled ->
                     scope.launch {
@@ -186,6 +204,7 @@ private fun TicklistApp(
 
         collectionId == null -> {
             CollectionsScreen(
+                settingsRepository = settingsRepository,
                 onOpenCollection = { id ->
                     collectionId = id
                 },
@@ -196,9 +215,7 @@ private fun TicklistApp(
         }
 
         else -> {
-            BackHandler(
-                enabled = true
-            ) {
+            BackHandler {
                 collectionId = null
             }
 
@@ -220,6 +237,7 @@ private fun TicklistApp(
 
 @Composable
 private fun CollectionsScreen(
+    settingsRepository: AppSettingsRepository,
     onOpenCollection: (Int) -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -317,13 +335,6 @@ private fun CollectionsScreen(
                         DropdownMenuItem(
                             text = { Text("Sammlung importieren") },
                             enabled = false,
-                            onClick = { menuExpanded = false }
-                        )
-
-                        DropdownMenuItem(
-                            text = {
-                                Text("Über Ticklist Climbing")
-                            },
                             onClick = { menuExpanded = false }
                         )
                     }

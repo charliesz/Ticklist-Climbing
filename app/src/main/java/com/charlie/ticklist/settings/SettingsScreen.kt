@@ -8,28 +8,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
     onBack: () -> Unit,
+    onAboutClick: () -> Unit,
     onHapticFeedbackChanged: (Boolean) -> Unit,
     onDurationChanged: (Int) -> Unit,
     onDarkModeChanged: (Boolean) -> Unit,
@@ -98,16 +94,14 @@ fun SettingsScreen(
                     Slider(
                         value = settings.statusConfirmationDurationMs
                             .toFloat(),
-
                         onValueChange = { value ->
-                            val rounded =
+                            val roundedDuration =
                                 (value / 250f)
                                     .toInt()
                                     .coerceIn(4, 12) * 250
 
-                            onDurationChanged(rounded)
+                            onDurationChanged(roundedDuration)
                         },
-
                         valueRange = 1000f..3000f,
                         steps = 7
                     )
@@ -142,7 +136,7 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Debug-Information",
+                        text = "Debug-Informationen",
                         style = MaterialTheme.typography.titleMedium
                     )
 
@@ -152,6 +146,17 @@ fun SettingsScreen(
                         onCheckedChange =
                             onCelebrationMessagesChanged
                     )
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TextButton(
+                    onClick = onAboutClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Über Ticklist Climbing")
                 }
             }
         }
@@ -192,6 +197,7 @@ private fun formatDuration(
     durationMs: Int
 ): String {
     val seconds = durationMs / 1000f
+
     return if (seconds % 1f == 0f) {
         "${seconds.toInt()},0 Sekunden"
     } else {
