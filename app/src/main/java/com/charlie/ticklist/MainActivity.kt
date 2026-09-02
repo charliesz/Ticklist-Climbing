@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -21,14 +22,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -36,6 +42,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -53,17 +61,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.charlie.ticklist.data.*
+import com.charlie.ticklist.data.CollectionEntity
+import com.charlie.ticklist.data.PhotoStorage
+import com.charlie.ticklist.data.RouteEntity
+import com.charlie.ticklist.data.RoutePhotoDao
+import com.charlie.ticklist.data.RoutePhotoEntity
+import com.charlie.ticklist.data.RoutePhotoRepository
+import com.charlie.ticklist.data.TicklistDatabase
+import com.charlie.ticklist.settings.AppSettings
+import com.charlie.ticklist.settings.AppSettingsRepository
+import com.charlie.ticklist.settings.SettingsScreen
+import com.charlie.ticklist.ui.PhotoViewerDialog
 import com.charlie.ticklist.ui.RoutePhotoEditor
 import com.charlie.ticklist.ui.theme.TicklistClimbingTheme
 import kotlinx.coroutines.launch
@@ -71,19 +92,6 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.size
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import com.charlie.ticklist.data.RoutePhotoEntity
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.text.style.TextAlign
-import com.charlie.ticklist.ui.PhotoViewerDialog
-import com.charlie.ticklist.data.PhotoStorage
-
-
-
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
 private enum class StatusFilter { NONE, FLASH, TOP, ZONE, PROJECT }
@@ -92,28 +100,84 @@ private enum class SortColumn { ROUTE, FLASH, TOP, ZONE, PROJECT }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { TicklistClimbingTheme { TicklistApp() } }
+        setContent {
+            val context = LocalContext.current
+            val settingsRepository = remember {
+                AppSettingsRepository(context)
+            }
+            val settings by settingsRepository.settings
+                .collectAsState(initial = AppSettings())
+
+            TicklistClimbingTheme(
+                darkTheme = settings.darkModeEnabled
+            ) {
+                TicklistApp(
+                    settings = settings,
+                    settingsRepository = settingsRepository
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun TicklistApp() {
+private fun TicklistApp(
+    settings: AppSettings,
+    settingsRepository: AppSettingsRepository
+) {
+    val scope = rememberCoroutineScope()
     var collectionId by remember { mutableStateOf<Int?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
 
-    if (collectionId == null) {
-        CollectionsScreen { collectionId = it }
+    if (showSettings) {
+        SettingsScreen(
+            settings = settings,
+            onBack = {
+                showSettings = false
+            },
+            onHapticFeedbackChanged = { enabled ->
+                scope.launch {
+                    settingsRepository.setHapticFeedbackEnabled(enabled)
+                }
+            },
+            onDurationChanged = { durationMs ->
+                scope.launch {
+                    settingsRepository
+                        .setStatusConfirmationDurationMs(durationMs)
+                }
+            },
+            onDarkModeChanged = { enabled ->
+                scope.launch {
+                    settingsRepository.setDarkModeEnabled(enabled)
+                }
+            },
+            onCelebrationMessagesChanged = { enabled ->
+                scope.launch {
+                    settingsRepository
+                        .setCelebrationMessagesEnabled(enabled)
+                }
+            }
+        )
+    } else if (collectionId == null) {
+        CollectionsScreen(
+            onOpenCollection = { collectionId = it },
+            onOpenSettings = { showSettings = true }
+        )
     } else {
         BackHandler { collectionId = null }
         CollectionRoutesScreen(
             collectionId = collectionId!!,
-            onBack = { collectionId = null }
+            settings = settings,
+            onBack = { collectionId = null },
+            onOpenSettings = { showSettings = true }
         )
     }
 }
 
 @Composable
 private fun CollectionsScreen(
-    onOpen: (Int) -> Unit
+    onOpenCollection: (Int) -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val db = remember { TicklistDatabase.getDatabase(context) }
@@ -135,7 +199,8 @@ private fun CollectionsScreen(
     var editing by remember { mutableStateOf<CollectionEntity?>(null) }
     var name by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
-    var newCount by remember { mutableStateOf("90") }
+    var newCount by remember { mutableStateOf("") }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (collectionDao.countCollections() == 0) {
@@ -148,7 +213,6 @@ private fun CollectionsScreen(
                 )
             )
         }
-
         if (routeDao.countRoutesForCollection(1) == 0) {
             routeDao.insertRoutes(
                 (1..90).map { number ->
@@ -165,20 +229,61 @@ private fun CollectionsScreen(
 
     Scaffold(
         topBar = {
-            Column(
-                Modifier
+            Row(
+                modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(12.dp)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "Meine Sammlungen",
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Text(
-                    "Kurz tippen zum Öffnen, lange drücken zum Bearbeiten",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Column {
+                    Text(
+                        "Meine Sammlungen",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Text(
+                        "Kurz tippen zum Öffnen, lange drücken zum Bearbeiten",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Box {
+                    IconButton(
+                        onClick = { menuExpanded = true }
+                    ) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "Menü"
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Einstellungen") },
+                            onClick = {
+                                menuExpanded = false
+                                onOpenSettings()
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Sammlung importieren") },
+                            enabled = false,
+                            onClick = { menuExpanded = false }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Text("Über Ticklist Climbing")
+                            },
+                            onClick = { menuExpanded = false }
+                        )
+                    }
+                }
             }
         },
         floatingActionButton = {
@@ -205,11 +310,9 @@ private fun CollectionsScreen(
                 val collectionRoutes = routes.filter {
                     it.collectionId == collection.id
                 }
-
                 val tops = collectionRoutes.count {
                     it.status == "TOP" || it.status == "FLASH"
                 }
-
                 val flashes = collectionRoutes.count {
                     it.status == "FLASH"
                 }
@@ -219,7 +322,7 @@ private fun CollectionsScreen(
                         .fillMaxWidth()
                         .combinedClickable(
                             onClick = {
-                                onOpen(collection.id)
+                                onOpenCollection(collection.id)
                             },
                             onLongClick = {
                                 editing = collection
@@ -235,7 +338,6 @@ private fun CollectionsScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-
                         Text(
                             "${collectionRoutes.size} Routen · " +
                                     "$tops Top ($flashes Flash)",
@@ -249,36 +351,23 @@ private fun CollectionsScreen(
 
     if (newDialog) {
         AlertDialog(
-            onDismissRequest = {
-                newDialog = false
-            },
-            title = {
-                Text("Neue Sammlung")
-            },
+            onDismissRequest = { newDialog = false },
+            title = { Text("Neue Sammlung") },
             text = {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedTextField(
                         value = newName,
-                        onValueChange = {
-                            newName = it
-                        },
-                        label = {
-                            Text("Name")
-                        },
+                        onValueChange = { newName = it },
+                        label = { Text("Name") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-
                     OutlinedTextField(
                         value = newCount,
-                        onValueChange = {
-                            newCount = it
-                        },
-                        label = {
-                            Text("Anzahl Routen")
-                        },
+                        onValueChange = { newCount = it },
+                        label = { Text("Anzahl Routen") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -289,7 +378,6 @@ private fun CollectionsScreen(
                     onClick = {
                         val collectionName = newName.trim()
                         val count = newCount.toIntOrNull() ?: 0
-
                         if (collectionName.isNotBlank()) {
                             scope.launch {
                                 val id = collectionDao
@@ -300,22 +388,21 @@ private fun CollectionsScreen(
                                             createdAt =
                                                 System.currentTimeMillis()
                                         )
-                                    )
-                                    .toInt()
-
+                                    ).toInt()
                                 if (count > 0) {
                                     routeDao.insertRoutes(
                                         (1..count).map { number ->
                                             RouteEntity(
                                                 number = number,
-                                                name = "%02d".format(number),
+                                                name = "%02d".format(
+                                                    number
+                                                ),
                                                 difficulty = "",
                                                 collectionId = id
                                             )
                                         }
                                     )
                                 }
-
                                 newDialog = false
                             }
                         }
@@ -326,9 +413,7 @@ private fun CollectionsScreen(
             },
             dismissButton = {
                 TextButton(
-                    onClick = {
-                        newDialog = false
-                    }
+                    onClick = { newDialog = false }
                 ) {
                     Text("Abbrechen")
                 }
@@ -342,29 +427,20 @@ private fun CollectionsScreen(
                 editDialog = false
                 editing = null
             },
-            title = {
-                Text("Sammlung bearbeiten")
-            },
+            title = { Text("Sammlung bearbeiten") },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
                         value = name,
-                        onValueChange = {
-                            name = it
-                        },
-                        label = {
-                            Text("Name")
-                        },
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-
                     TextButton(
-                        onClick = {
-                            deleteDialog = true
-                        },
+                        onClick = { deleteDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Sammlung löschen")
@@ -376,7 +452,6 @@ private fun CollectionsScreen(
                     onClick = {
                         val collection = editing
                         val newCollectionName = name.trim()
-
                         if (
                             collection != null &&
                             newCollectionName.isNotBlank()
@@ -386,7 +461,6 @@ private fun CollectionsScreen(
                                     collection.id,
                                     newCollectionName
                                 )
-
                                 editDialog = false
                                 editing = null
                             }
@@ -411,22 +485,18 @@ private fun CollectionsScreen(
 
     if (deleteDialog) {
         AlertDialog(
-            onDismissRequest = {
-                deleteDialog = false
-            },
-            title = {
-                Text("Sammlung löschen?")
-            },
+            onDismissRequest = { deleteDialog = false },
+            title = { Text("Sammlung löschen?") },
             text = {
                 Text(
-                    "Die Sammlung und alle zugehörigen Routen werden dauerhaft gelöscht."
+                    "Die Sammlung und alle zugehörigen Routen " +
+                            "werden dauerhaft gelöscht."
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
                         val collection = editing
-
                         if (collection != null) {
                             scope.launch {
                                 routeDao.deleteRoutesForCollection(
@@ -435,7 +505,6 @@ private fun CollectionsScreen(
                                 collectionDao.deleteCollectionById(
                                     collection.id
                                 )
-
                                 deleteDialog = false
                                 editDialog = false
                                 editing = null
@@ -448,9 +517,7 @@ private fun CollectionsScreen(
             },
             dismissButton = {
                 TextButton(
-                    onClick = {
-                        deleteDialog = false
-                    }
+                    onClick = { deleteDialog = false }
                 ) {
                     Text("Abbrechen")
                 }
@@ -462,13 +529,12 @@ private fun CollectionsScreen(
 @Composable
 private fun CollectionRoutesScreen(
     collectionId: Int,
-    onBack: () -> Unit
+    settings: AppSettings,
+    onBack: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
-    val db = remember {
-        TicklistDatabase.getDatabase(context)
-    }
-
+    val db = remember { TicklistDatabase.getDatabase(context) }
     val routeDao = db.routeDao()
     val collectionDao = db.collectionDao()
     val photoDao = db.routePhotoDao()
@@ -481,6 +547,7 @@ private fun CollectionRoutesScreen(
     val routes by routeDao
         .observeRoutesForCollection(collectionId)
         .collectAsState(emptyList())
+
     val mainPhotos by photoDao
         .observeMainPhotosForCollection(collectionId)
         .collectAsState(emptyList())
@@ -488,6 +555,7 @@ private fun CollectionRoutesScreen(
     val mainPhotoByRouteId = mainPhotos.associateBy {
         it.routeId
     }
+
     LaunchedEffect(mainPhotos) {
         mainPhotos.forEach { photo ->
             if (!PhotoStorage.fileExists(photo.thumbnailPath)) {
@@ -495,6 +563,7 @@ private fun CollectionRoutesScreen(
             }
         }
     }
+
     var collectionName by remember { mutableStateOf("") }
 
     LaunchedEffect(collectionId) {
@@ -516,62 +585,57 @@ private fun CollectionRoutesScreen(
     var sort by remember { mutableStateOf(SortColumn.ROUTE) }
     var ascending by remember { mutableStateOf(true) }
     var selectionMode by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var selected by remember {
+        mutableStateOf<Set<Int>>(emptySet())
+    }
     var filterOpen by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf(false) }
     var bulk by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     var editingNumber by remember { mutableStateOf<Int?>(null) }
-    var name by remember { mutableStateOf("") }
-    var difficulty by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf<RouteStatus?>(null) }
-    var statusAt by remember { mutableStateOf<Long?>(null) }
-    var completed by remember { mutableStateOf<Long?>(null) }
+    var editName by remember { mutableStateOf("") }
+    var editDifficulty by remember { mutableStateOf("") }
+    var editStatus by remember {
+        mutableStateOf<RouteStatus?>(null)
+    }
+    var editStatusAt by remember { mutableStateOf<Long?>(null) }
+    var editCompleted by remember { mutableStateOf<Long?>(null) }
 
     var bulkStatusEnabled by remember { mutableStateOf(false) }
-    var bulkStatus by remember { mutableStateOf<RouteStatus?>(null) }
+    var bulkStatus by remember {
+        mutableStateOf<RouteStatus?>(null)
+    }
     var bulkDateEnabled by remember { mutableStateOf(false) }
     var bulkDate by remember { mutableStateOf<Long?>(null) }
+
     var photoViewerPhoto by remember {
         mutableStateOf<RoutePhotoEntity?>(null)
     }
     var photoViewerPhotos by remember {
         mutableStateOf<List<RoutePhotoEntity>>(emptyList())
     }
+
     val shown = routes
-        .filter {
-            routeFilter(it.status) in filters
-        }
-        .sortedWith(
-            routeComparator(
-                sort,
-                ascending
-            )
-        )
+        .filter { routeFilter(it.status) in filters }
+        .sortedWith(routeComparator(sort, ascending))
 
     val tops = routes.count {
         it.status == "TOP" || it.status == "FLASH"
     }
-
-    val flashes = routes.count {
-        it.status == "FLASH"
-    }
-
-    val zones = routes.count {
-        it.status == "ZONE"
-    }
+    val flashes = routes.count { it.status == "FLASH" }
+    val zones = routes.count { it.status == "ZONE" }
 
     fun openRoute(route: RouteEntity) {
         scope.launch {
             val current = routeDao.getRoute(route.number) ?: route
-
             editingNumber = current.number
-            name = current.name
-            difficulty = current.difficulty
-            status = current.status.toRouteStatus()
-            statusAt = current.statusChangedAt
-            completed = current.completedDate
+            editName = current.name
+            editDifficulty = current.difficulty
+            editStatus = current.status.toRouteStatus()
+            editStatusAt = current.statusChangedAt
+            editCompleted = current.completedDate
             dialog = true
         }
     }
@@ -593,7 +657,6 @@ private fun CollectionRoutesScreen(
                             Alignment.CenterVertically
                     ) {
                         Text("${selected.size} ausgewählt")
-
                         Row {
                             TextButton(
                                 onClick = {
@@ -608,7 +671,6 @@ private fun CollectionRoutesScreen(
                             ) {
                                 Text("Bearbeiten")
                             }
-
                             TextButton(
                                 onClick = {
                                     selected = emptySet()
@@ -627,21 +689,78 @@ private fun CollectionRoutesScreen(
                         verticalAlignment =
                             Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             Text(
                                 collectionName,
                                 style =
-                                    MaterialTheme.typography.titleMedium
+                                    MaterialTheme.typography
+                                        .titleMedium
                             )
                             Text(
-                                "${shown.size} von ${routes.size} Routen",
+                                "${shown.size} von ${routes.size} " +
+                                        "Routen",
                                 style =
-                                    MaterialTheme.typography.bodySmall
+                                    MaterialTheme.typography
+                                        .bodySmall
                             )
                         }
 
                         TextButton(onClick = onBack) {
                             Text("Sammlungen")
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    menuExpanded = true
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Menü"
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = {
+                                    menuExpanded = false
+                                }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("Einstellungen")
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onOpenSettings()
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Sammlung exportieren"
+                                        )
+                                    },
+                                    enabled = false,
+                                    onClick = {
+                                        menuExpanded = false
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Fortschritt übertragen"
+                                        )
+                                    },
+                                    enabled = false,
+                                    onClick = {
+                                        menuExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
 
@@ -686,9 +805,7 @@ private fun CollectionRoutesScreen(
                                 filters,
                                 allFilters,
                                 { filterOpen = false }
-                            ) {
-                                filters = it
-                            }
+                            ) { filters = it }
                         }
                     }
                 }
@@ -706,11 +823,11 @@ private fun CollectionRoutesScreen(
             FloatingActionButton(
                 onClick = {
                     editingNumber = null
-                    name = ""
-                    difficulty = ""
-                    status = null
-                    statusAt = null
-                    completed = null
+                    editName = ""
+                    editDifficulty = ""
+                    editStatus = null
+                    editStatusAt = null
+                    editCompleted = null
                     dialog = true
                 }
             ) {
@@ -719,7 +836,7 @@ private fun CollectionRoutesScreen(
         }
     ) { padding ->
         LazyColumn(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(
@@ -730,30 +847,23 @@ private fun CollectionRoutesScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             item {
-                RouteHeader(
-                    column = sort,
-                    ascending = ascending,
-                    onSort = { selectedColumn ->
-                        if (sort == selectedColumn) {
-                            ascending = !ascending
-                        } else {
-                            sort = selectedColumn
-                            ascending = true
-                        }
+                RouteHeader(sort, ascending) {
+                    if (sort == it) {
+                        ascending = !ascending
+                    } else {
+                        sort = it
+                        ascending = true
                     }
-                )
+                }
             }
 
-            items(
-                items = shown,
-                key = { route -> route.id }
-            ) { route ->
-
+            items(shown, key = { it.id }) { route ->
                 RouteRow(
                     route = route,
                     mainPhoto = mainPhotoByRouteId[route.id],
                     selectionMode = selectionMode,
                     selected = route.number in selected,
+                    settings = settings,
                     onSelectedChange = {
                         selected =
                             if (route.number in selected) {
@@ -764,17 +874,6 @@ private fun CollectionRoutesScreen(
                     },
                     onStatusChange = { newStatus ->
                         val now = System.currentTimeMillis()
-
-                        val completedDate =
-                            if (
-                                newStatus == RouteStatus.TOP ||
-                                newStatus == RouteStatus.FLASH
-                            ) {
-                                route.completedDate ?: now
-                            } else {
-                                null
-                            }
-
                         scope.launch {
                             routeDao.updateRouteWithDates(
                                 number = route.number,
@@ -782,53 +881,55 @@ private fun CollectionRoutesScreen(
                                 difficulty = route.difficulty,
                                 status = newStatus.name,
                                 statusChangedAt = now,
-                                completedDate = completedDate,
+                                completedDate =
+                                    if (
+                                        newStatus == RouteStatus.TOP ||
+                                        newStatus == RouteStatus.FLASH
+                                    ) {
+                                        route.completedDate ?: now
+                                    } else {
+                                        null
+                                    },
                                 collectionId = collectionId
                             )
-
-                            haptic.performHapticFeedback(
-                                HapticFeedbackType.LongPress
-                            )
+                            if (settings.hapticFeedbackEnabled) {
+                                haptic.performHapticFeedback(
+                                    HapticFeedbackType.LongPress
+                                )
+                            }
                         }
                     },
-                    onEdit = {
-                        openRoute(route)
-                    },
+                    onEdit = { openRoute(route) },
                     onPhotoClick = { photo ->
                         scope.launch {
-                            photoViewerPhotos = photoDao.getPhotosForRoute(
-                                routeId = photo.routeId
-                            )
-
+                            photoViewerPhotos =
+                                photoDao.getPhotosForRoute(
+                                    routeId = photo.routeId
+                                )
                             photoViewerPhoto = photo
                         }
                     }
                 )
             }
         }
-
     }
+
     photoViewerPhoto?.let { photo ->
         PhotoViewerDialog(
             selectedPhoto = photo,
             photos = photoViewerPhotos,
-            onDismiss = {
-                photoViewerPhoto = null
-            },
-            onSelectPhoto = { selectedPhoto ->
-                photoViewerPhoto = selectedPhoto
-            },
-            onDeletePhoto = { photoToDelete ->
+            onDismiss = { photoViewerPhoto = null },
+            onSelectPhoto = { photoViewerPhoto = it },
+            onDeletePhoto = {
                 scope.launch {
-                    photoRepository.deletePhoto(photoToDelete)
+                    photoRepository.deletePhoto(it)
                     photoViewerPhoto = null
                 }
             },
-            onSetMainPhoto = { mainPhoto ->
+            onSetMainPhoto = {
                 scope.launch {
-                    photoRepository.setMainPhoto(mainPhoto)
-
-                    photoViewerPhoto = mainPhoto.copy(
+                    photoRepository.setMainPhoto(it)
+                    photoViewerPhoto = it.copy(
                         isMainPhoto = true
                     )
                 }
@@ -849,27 +950,17 @@ private fun CollectionRoutesScreen(
             } else {
                 "Route bearbeiten"
             },
-            name = name,
-            difficulty = difficulty,
-            status = status,
-            statusChangedAt = statusAt,
-            completedDate = completed,
-            onNameChanged = {
-                name = it
-            },
-            onDifficultyChanged = {
-                difficulty = it
-            },
-            onStatusChanged = {
-                status = it
-            },
-            onCompletedDateChanged = {
-                completed = it
-            },
+            name = editName,
+            difficulty = editDifficulty,
+            status = editStatus,
+            statusChangedAt = editStatusAt,
+            completedDate = editCompleted,
+            onNameChanged = { editName = it },
+            onDifficultyChanged = { editDifficulty = it },
+            onStatusChanged = { editStatus = it },
+            onCompletedDateChanged = { editCompleted = it },
             onDelete = if (editingNumber != null) {
-                {
-                    delete = true
-                }
+                { delete = true }
             } else {
                 null
             },
@@ -878,25 +969,21 @@ private fun CollectionRoutesScreen(
                 editingNumber = null
             },
             onSave = {
-                if (name.isNotBlank()) {
+                if (editName.isNotBlank()) {
                     scope.launch {
                         val now = System.currentTimeMillis()
-
                         val old = routes.firstOrNull {
                             it.number == editingNumber
                         }
-
                         val savedStatusAt =
                             old?.statusChangedAt
-                                ?: statusAt
-                                ?: now
-
+                                ?: editStatusAt ?: now
                         val savedCompleted =
                             if (
-                                status == RouteStatus.TOP ||
-                                status == RouteStatus.FLASH
+                                editStatus == RouteStatus.TOP ||
+                                editStatus == RouteStatus.FLASH
                             ) {
-                                completed
+                                editCompleted
                             } else {
                                 null
                             }
@@ -905,11 +992,13 @@ private fun CollectionRoutesScreen(
                             routeDao.insertRoute(
                                 RouteEntity(
                                     number = (
-                                            routes.maxOfOrNull { it.number }?.plus(1) ?: 1
+                                            routes.maxOfOrNull {
+                                                it.number
+                                            }?.plus(1) ?: 1
                                             ),
-                                    name = name,
-                                    difficulty = difficulty,
-                                    status = status?.name,
+                                    name = editName,
+                                    difficulty = editDifficulty,
+                                    status = editStatus?.name,
                                     statusChangedAt = savedStatusAt,
                                     completedDate = savedCompleted,
                                     collectionId = collectionId
@@ -918,15 +1007,14 @@ private fun CollectionRoutesScreen(
                         } else {
                             routeDao.updateRouteWithDates(
                                 number = editingNumber!!,
-                                name = name,
-                                difficulty = difficulty,
-                                status = status?.name,
+                                name = editName,
+                                difficulty = editDifficulty,
+                                status = editStatus?.name,
                                 statusChangedAt = savedStatusAt,
                                 completedDate = savedCompleted,
                                 collectionId = collectionId
                             )
                         }
-
                         dialog = false
                         editingNumber = null
                     }
@@ -946,26 +1034,15 @@ private fun CollectionRoutesScreen(
             onStatusEnabledChanged = {
                 bulkStatusEnabled = it
             },
-            onStatusChanged = {
-                bulkStatus = it
-            },
-            onDateEnabledChanged = {
-                bulkDateEnabled = it
-            },
-            onDateChanged = {
-                bulkDate = it
-            },
-            onDismiss = {
-                bulk = false
-            },
+            onStatusChanged = { bulkStatus = it },
+            onDateEnabledChanged = { bulkDateEnabled = it },
+            onDateChanged = { bulkDate = it },
+            onDismiss = { bulk = false },
             onSave = {
                 scope.launch {
                     val now = System.currentTimeMillis()
-
                     routes
-                        .filter {
-                            it.number in selected
-                        }
+                        .filter { it.number in selected }
                         .forEach { route ->
                             routeDao.updateRouteWithDates(
                                 number = route.number,
@@ -976,24 +1053,21 @@ private fun CollectionRoutesScreen(
                                 } else {
                                     route.status
                                 },
-                                statusChangedAt = if (
-                                    bulkStatusEnabled
-                                ) {
-                                    now
-                                } else {
-                                    route.statusChangedAt
-                                },
-                                completedDate = if (
-                                    bulkDateEnabled
-                                ) {
-                                    bulkDate
-                                } else {
-                                    route.completedDate
-                                },
+                                statusChangedAt =
+                                    if (bulkStatusEnabled) {
+                                        now
+                                    } else {
+                                        route.statusChangedAt
+                                    },
+                                completedDate =
+                                    if (bulkDateEnabled) {
+                                        bulkDate
+                                    } else {
+                                        route.completedDate
+                                    },
                                 collectionId = collectionId
                             )
                         }
-
                     selected = emptySet()
                     selectionMode = false
                     bulk = false
@@ -1004,21 +1078,15 @@ private fun CollectionRoutesScreen(
 
     if (delete) {
         AlertDialog(
-            onDismissRequest = {
-                delete = false
-            },
-            title = {
-                Text("Route löschen?")
-            },
+            onDismissRequest = { delete = false },
+            title = { Text("Route löschen?") },
             text = {
                 Text("Diese Route wird dauerhaft gelöscht.")
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val number = editingNumber
-
-                        if (number != null) {
+                        editingNumber?.let { number ->
                             routes.firstOrNull {
                                 it.number == number
                             }?.let { route ->
@@ -1027,7 +1095,6 @@ private fun CollectionRoutesScreen(
                                 }
                             }
                         }
-
                         delete = false
                         dialog = false
                         editingNumber = null
@@ -1038,9 +1105,7 @@ private fun CollectionRoutesScreen(
             },
             dismissButton = {
                 TextButton(
-                    onClick = {
-                        delete = false
-                    }
+                    onClick = { delete = false }
                 ) {
                     Text("Abbrechen")
                 }
@@ -1057,28 +1122,16 @@ private fun FilterMenu(
     onDismiss: () -> Unit,
     onChanged: (Set<StatusFilter>) -> Unit
 ) {
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss
-    ) {
+    DropdownMenu(expanded, onDismiss) {
         FilterItem("Flash", StatusFilter.FLASH in selectedFilters) {
-            onChanged(
-                selectedFilters.toggleFilter(StatusFilter.FLASH)
-            )
+            onChanged(selectedFilters.toggleFilter(StatusFilter.FLASH))
         }
-
         FilterItem("Top", StatusFilter.TOP in selectedFilters) {
-            onChanged(
-                selectedFilters.toggleFilter(StatusFilter.TOP)
-            )
+            onChanged(selectedFilters.toggleFilter(StatusFilter.TOP))
         }
-
         FilterItem("Zone", StatusFilter.ZONE in selectedFilters) {
-            onChanged(
-                selectedFilters.toggleFilter(StatusFilter.ZONE)
-            )
+            onChanged(selectedFilters.toggleFilter(StatusFilter.ZONE))
         }
-
         FilterItem(
             "Projekt",
             StatusFilter.PROJECT in selectedFilters
@@ -1087,35 +1140,19 @@ private fun FilterMenu(
                 selectedFilters.toggleFilter(StatusFilter.PROJECT)
             )
         }
-
         FilterItem("Ohne", StatusFilter.NONE in selectedFilters) {
-            onChanged(
-                selectedFilters.toggleFilter(StatusFilter.NONE)
-            )
+            onChanged(selectedFilters.toggleFilter(StatusFilter.NONE))
         }
-
         DropdownMenuItem(
-            text = {
-                Text("Alle")
-            },
-            onClick = {
-                onChanged(allFilters)
-            }
+            text = { Text("Alle") },
+            onClick = { onChanged(allFilters) }
         )
-
         DropdownMenuItem(
-            text = {
-                Text("Keine")
-            },
-            onClick = {
-                onChanged(emptySet())
-            }
+            text = { Text("Keine") },
+            onClick = { onChanged(emptySet()) }
         )
-
         DropdownMenuItem(
-            text = {
-                Text("Abgeschlossene aus")
-            },
+            text = { Text("Abgeschlossene aus") },
             onClick = {
                 onChanged(
                     setOf(
@@ -1136,16 +1173,12 @@ private fun FilterItem(
     onClick: () -> Unit
 ) {
     DropdownMenuItem(
-        text = {
-            Text(label)
-        },
+        text = { Text(label) },
         onClick = onClick,
         leadingIcon = {
             Checkbox(
                 checked = checked,
-                onCheckedChange = {
-                    onClick()
-                }
+                onCheckedChange = { onClick() }
             )
         }
     )
@@ -1173,9 +1206,7 @@ private fun SingleRouteDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(title)
-        },
+        title = { Text(title) },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1183,9 +1214,7 @@ private fun SingleRouteDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = onNameChanged,
-                    label = {
-                        Text("Name oder Nummer")
-                    },
+                    label = { Text("Name oder Nummer") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -1193,9 +1222,7 @@ private fun SingleRouteDialog(
                 OutlinedTextField(
                     value = difficulty,
                     onValueChange = onDifficultyChanged,
-                    label = {
-                        Text("Schwierigkeit")
-                    },
+                    label = { Text("Schwierigkeit") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -1210,39 +1237,48 @@ private fun SingleRouteDialog(
                     )
                 } else {
                     Text(
-                        text = "Speichere die Route zuerst, um Fotos hinzuzufügen.",
+                        "Speichere die Route zuerst, " +
+                                "um Fotos hinzuzufügen.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
 
                 Text(
-                    text = "Status",
+                    "Status",
                     style = MaterialTheme.typography.titleMedium
                 )
 
                 StatusChoice("Kein Status", status == null) {
                     onStatusChanged(null)
                 }
-
-                StatusChoice("Flash", status == RouteStatus.FLASH) {
+                StatusChoice(
+                    "Flash",
+                    status == RouteStatus.FLASH
+                ) {
                     onStatusChanged(RouteStatus.FLASH)
                 }
-
-                StatusChoice("Top", status == RouteStatus.TOP) {
+                StatusChoice(
+                    "Top",
+                    status == RouteStatus.TOP
+                ) {
                     onStatusChanged(RouteStatus.TOP)
                 }
-
-                StatusChoice("Zone", status == RouteStatus.ZONE) {
+                StatusChoice(
+                    "Zone",
+                    status == RouteStatus.ZONE
+                ) {
                     onStatusChanged(RouteStatus.ZONE)
                 }
-
-                StatusChoice("Projekt", status == RouteStatus.PROJECT) {
+                StatusChoice(
+                    "Projekt",
+                    status == RouteStatus.PROJECT
+                ) {
                     onStatusChanged(RouteStatus.PROJECT)
                 }
 
                 if (statusChangedAt != null) {
                     Text(
-                        text = "Status eingetragen: ${
+                        "Status eingetragen: ${
                             formatDateTime(statusChangedAt)
                         }",
                         style = MaterialTheme.typography.bodySmall
@@ -1254,7 +1290,7 @@ private fun SingleRouteDialog(
                     status == RouteStatus.FLASH
                 ) {
                     Text(
-                        text = "Erfolgsdatum: ${
+                        "Erfolgsdatum: ${
                             completedDate?.let {
                                 formatDate(it)
                             } ?: "nicht eingetragen"
@@ -1265,9 +1301,9 @@ private fun SingleRouteDialog(
                     OutlinedButton(
                         onClick = {
                             showDatePicker(
-                                context = context,
-                                currentDate = completedDate,
-                                onDateSelected = onCompletedDateChanged
+                                context,
+                                completedDate,
+                                onCompletedDateChanged
                             )
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -1304,16 +1340,12 @@ private fun SingleRouteDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = onSave
-            ) {
+            Button(onClick = onSave) {
                 Text("Speichern")
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss
-            ) {
+            TextButton(onClick = onDismiss) {
                 Text("Abbrechen")
             }
         }
@@ -1337,9 +1369,7 @@ private fun BulkEditDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text("$selectedCount Routen bearbeiten")
-        },
+        title = { Text("$selectedCount Routen bearbeiten") },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1351,7 +1381,6 @@ private fun BulkEditDialog(
                         checked = statusEnabled,
                         onCheckedChange = onStatusEnabledChanged
                     )
-
                     Text("Status ändern")
                 }
 
@@ -1359,22 +1388,22 @@ private fun BulkEditDialog(
                     StatusChoice("Kein Status", status == null) {
                         onStatusChanged(null)
                     }
-
-                    StatusChoice("Flash", status == RouteStatus.FLASH) {
-                        onStatusChanged(RouteStatus.FLASH)
-                    }
-
-                    StatusChoice("Top", status == RouteStatus.TOP) {
-                        onStatusChanged(RouteStatus.TOP)
-                    }
-
-                    StatusChoice("Zone", status == RouteStatus.ZONE) {
-                        onStatusChanged(RouteStatus.ZONE)
-                    }
-
-                    StatusChoice("Projekt", status == RouteStatus.PROJECT) {
-                        onStatusChanged(RouteStatus.PROJECT)
-                    }
+                    StatusChoice(
+                        "Flash",
+                        status == RouteStatus.FLASH
+                    ) { onStatusChanged(RouteStatus.FLASH) }
+                    StatusChoice(
+                        "Top",
+                        status == RouteStatus.TOP
+                    ) { onStatusChanged(RouteStatus.TOP) }
+                    StatusChoice(
+                        "Zone",
+                        status == RouteStatus.ZONE
+                    ) { onStatusChanged(RouteStatus.ZONE) }
+                    StatusChoice(
+                        "Projekt",
+                        status == RouteStatus.PROJECT
+                    ) { onStatusChanged(RouteStatus.PROJECT) }
                 }
 
                 Row(
@@ -1384,38 +1413,33 @@ private fun BulkEditDialog(
                         checked = dateEnabled,
                         onCheckedChange = onDateEnabledChanged
                     )
-
                     Text("Erfolgsdatum ändern")
                 }
 
                 if (dateEnabled) {
                     Text(
-                        text = "Datum: ${
+                        "Datum: ${
                             date?.let {
                                 formatDate(it)
                             } ?: "nicht gesetzt"
                         }",
                         style = MaterialTheme.typography.bodySmall
                     )
-
                     OutlinedButton(
                         onClick = {
                             showDatePicker(
-                                context = context,
-                                currentDate = date,
-                                onDateSelected = onDateChanged
+                                context,
+                                date,
+                                onDateChanged
                             )
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Datum auswählen")
                     }
-
                     if (date != null) {
                         TextButton(
-                            onClick = {
-                                onDateChanged(null)
-                            },
+                            onClick = { onDateChanged(null) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Datum löschen")
@@ -1425,16 +1449,12 @@ private fun BulkEditDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = onSave
-            ) {
+            Button(onClick = onSave) {
                 Text("Auf $selectedCount anwenden")
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss
-            ) {
+            TextButton(onClick = onDismiss) {
                 Text("Abbrechen")
             }
         }
@@ -1448,17 +1468,11 @@ private fun StatusChoice(
     onClick: () -> Unit
 ) {
     if (selected) {
-        Button(
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Button(onClick, Modifier.fillMaxWidth()) {
             Text(label)
         }
     } else {
-        OutlinedButton(
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        OutlinedButton(onClick, Modifier.fillMaxWidth()) {
             Text(label)
         }
     }
@@ -1472,13 +1486,13 @@ private fun CalculationBar(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier
+        modifier
             .fillMaxWidth()
             .padding(6.dp)
     ) {
         Text(
-            text = "Top: $topCount ($flashCount Flash) · Zone: $zoneCount",
-            modifier = Modifier.padding(10.dp)
+            "Top: $topCount ($flashCount Flash) · Zone: $zoneCount",
+            Modifier.padding(10.dp)
         )
     }
 }
@@ -1496,9 +1510,7 @@ private fun RouteHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         TextButton(
-            onClick = {
-                onSort(SortColumn.ROUTE)
-            },
+            onClick = { onSort(SortColumn.ROUTE) },
             modifier = Modifier.width(86.dp),
             contentPadding = PaddingValues(0.dp)
         ) {
@@ -1516,84 +1528,29 @@ private fun RouteHeader(
             )
         }
 
-        TextButton(
-            onClick = {
-                onSort(SortColumn.FLASH)
-            },
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(0.dp)
-        ) {
-            Text(
-                text = "Flash" + if (column == SortColumn.FLASH) {
-                    if (ascending) " ↑" else " ↓"
-                } else {
-                    ""
-                },
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        TextButton(
-            onClick = {
-                onSort(SortColumn.TOP)
-            },
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(0.dp)
-        ) {
-            Text(
-                text = "Top" + if (column == SortColumn.TOP) {
-                    if (ascending) " ↑" else " ↓"
-                } else {
-                    ""
-                },
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        TextButton(
-            onClick = {
-                onSort(SortColumn.ZONE)
-            },
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(0.dp)
-        ) {
-            Text(
-                text = "Zone" + if (column == SortColumn.ZONE) {
-                    if (ascending) " ↑" else " ↓"
-                } else {
-                    ""
-                },
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        TextButton(
-            onClick = {
-                onSort(SortColumn.PROJECT)
-            },
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(0.dp)
-        ) {
-            Text(
-                text = "Projekt" + if (column == SortColumn.PROJECT) {
-                    if (ascending) " ↑" else " ↓"
-                } else {
-                    ""
-                },
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        listOf(
+            "Flash" to SortColumn.FLASH,
+            "Top" to SortColumn.TOP,
+            "Zone" to SortColumn.ZONE,
+            "Projekt" to SortColumn.PROJECT
+        ).forEach { (label, sortColumn) ->
+            TextButton(
+                onClick = { onSort(sortColumn) },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text(
+                    label + if (column == sortColumn) {
+                        if (ascending) " ↑" else " ↓"
+                    } else {
+                        ""
+                    },
+                    fontSize = 11.sp,
+                    maxLines = 1
+                )
+            }
         }
     }
-
-
 }
 
 @Composable
@@ -1602,12 +1559,12 @@ private fun RouteRow(
     mainPhoto: RoutePhotoEntity?,
     selectionMode: Boolean,
     selected: Boolean,
+    settings: AppSettings,
     onSelectedChange: () -> Unit,
     onStatusChange: (RouteStatus) -> Unit,
     onEdit: () -> Unit,
     onPhotoClick: (RoutePhotoEntity) -> Unit
 ) {
-
     var rowProgress by remember(route.id) {
         mutableStateOf(0f)
     }
@@ -1620,194 +1577,134 @@ private fun RouteRow(
         }
 
     Box(
-        modifier = Modifier
+        Modifier
             .fillMaxWidth()
             .background(rowBackground)
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (selectionMode) {
-                    Checkbox(
-                        checked = selected,
-                        onCheckedChange = {
-                            onSelectedChange()
-                        }
-                    )
-                }
+        Card(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(6.dp),
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+                    if (selectionMode) {
+                        Checkbox(
+                            checked = selected,
+                            onCheckedChange = {
+                                onSelectedChange()
+                            }
+                        )
+                    }
 
-                Column(
-                    modifier = Modifier
-                        .width(28.dp)
-                        .padding(end = 2.dp)
-                        .pointerInput(route.id, selectionMode) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (selectionMode) {
-                                        onSelectedChange()
+                    Column(
+                        Modifier
+                            .width(28.dp)
+                            .padding(end = 2.dp)
+                            .pointerInput(
+                                route.id,
+                                selectionMode
+                            ) {
+                                detectTapGestures(
+                                    onTap = {
+                                        if (selectionMode) {
+                                            onSelectedChange()
+                                        }
+                                    },
+                                    onLongPress = {
+                                        if (!selectionMode) {
+                                            onEdit()
+                                        }
                                     }
-                                },
-                                onLongPress = {
-                                    if (!selectionMode) {
-                                        onEdit()
-                                    }
-                                }
+                                )
+                            }
+                    ) {
+                        Text(
+                            route.name,
+                            style =
+                                MaterialTheme.typography
+                                    .titleSmall,
+                            maxLines = 1,
+                            overflow =
+                                TextOverflow.Ellipsis
+                        )
+                        if (route.difficulty.isNotBlank()) {
+                            Text(
+                                route.difficulty,
+                                style =
+                                    MaterialTheme.typography
+                                        .bodySmall,
+                                maxLines = 1,
+                                overflow =
+                                    TextOverflow.Ellipsis
                             )
                         }
-                )
-                {
-                    Text(
-                        text = route.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    }
 
-                    if (route.difficulty.isNotBlank()) {
-                        Text(
-                            text = route.difficulty,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    if (mainPhoto != null) {
+                        RouteRowThumbnail(
+                            photo = mainPhoto,
+                            onClick = {
+                                onPhotoClick(mainPhoto)
+                            },
+                            onLongClick = { onEdit() }
+                        )
+                    } else {
+                        RoutePhotoPlaceholder(
+                            onClick = {},
+                            onLongClick = { onEdit() }
+                        )
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    listOf(
+                        "Flash" to RouteStatus.FLASH,
+                        "Top" to RouteStatus.TOP,
+                        "Zone" to RouteStatus.ZONE,
+                        "Projekt" to RouteStatus.PROJECT
+                    ).forEach { (label, routeStatus) ->
+                        StatusButton(
+                            label = label,
+                            selected =
+                                route.status == routeStatus.name,
+                            modifier = Modifier.weight(1f),
+                            durationMs =
+                                settings
+                                    .statusConfirmationDurationMs,
+                            onProgress = {
+                                rowProgress = it
+                            },
+                            onComplete = {
+                                rowProgress = 0f
+                                onStatusChange(routeStatus)
+                            }
                         )
                     }
                 }
 
-
-                if (mainPhoto != null) {
-                    RouteRowThumbnail(
-                        photo = mainPhoto,
-                        onClick = {
-                            onPhotoClick(mainPhoto)
-                        },
-                        onLongClick = {
-                            onEdit()
-                        }
-                    )
-                } else {
-                    RoutePhotoPlaceholder(
-                        onClick = {
-                            onEdit()
-                        },
-                        onLongClick = {
-                            onEdit()
-                        }
+                if (rowProgress > 0f) {
+                    BorderProgress(
+                        rowProgress,
+                        MaterialTheme.colorScheme.primary
                     )
                 }
-
-                Spacer(
-                    modifier = Modifier.width(10.dp)
-                )
-
-
-                StatusButton(
-                    label = "Flash",
-                    selected = route.status == "FLASH",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.FLASH)
-                    }
-                )
-
-                StatusButton(
-                    label = "Top",
-                    selected = route.status == "TOP",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.TOP)
-                    }
-                )
-
-                StatusButton(
-                    label = "Zone",
-                    selected = route.status == "ZONE",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.ZONE)
-                    }
-                )
-
-                StatusButton(
-                    label = "Projekt",
-                    selected = route.status == "PROJECT",
-                    modifier = Modifier.weight(1f),
-                    onProgress = {
-                        rowProgress = it
-                    },
-                    onComplete = {
-                        rowProgress = 0f
-                        onStatusChange(RouteStatus.PROJECT)
-                    }
-                )
             }
-        }
-
-        if (rowProgress > 0f) {
-            BorderProgress(
-                progress = rowProgress,
-                color = MaterialTheme.colorScheme.primary
-            )
         }
     }
 }
 
 @Composable
-private fun RoutePhotoPlaceholder(
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = {
-                        onLongClick()
-                    }
-                )
-
-            }
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "+",
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
-}
-
-@Composable
-fun RouteRowThumbnail(
+private fun RouteRowThumbnail(
     photo: RoutePhotoEntity,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val previewPath = photo.thumbnailPath ?: photo.filePath
-
     val imageBitmap = remember(previewPath) {
         val file = java.io.File(previewPath)
-
         if (file.exists()) {
             runCatching {
                 android.graphics.BitmapFactory
@@ -1820,16 +1717,12 @@ fun RouteRowThumbnail(
     }
 
     Box(
-        modifier = Modifier
+        Modifier
             .size(48.dp)
             .pointerInput(photo.id) {
                 detectTapGestures(
-                    onTap = {
-                        onClick()
-                    },
-                    onLongPress = {
-                        onLongClick()
-                    }
+                    onTap = { onClick() },
+                    onLongPress = { onLongClick() }
                 )
             },
         contentAlignment = Alignment.Center
@@ -1843,7 +1736,7 @@ fun RouteRowThumbnail(
             )
         } else {
             Box(
-                modifier = Modifier
+                Modifier
                     .fillMaxSize()
                     .background(
                         MaterialTheme.colorScheme.surfaceVariant
@@ -1851,7 +1744,7 @@ fun RouteRowThumbnail(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "–",
+                    "–",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -1860,37 +1753,62 @@ fun RouteRowThumbnail(
 }
 
 @Composable
+private fun RoutePhotoPlaceholder(
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = { onLongClick() }
+                )
+            }
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "+",
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+@Composable
 private fun StatusButton(
     label: String,
     selected: Boolean,
     modifier: Modifier,
+    durationMs: Int = 1500,
     onProgress: (Float) -> Unit,
     onComplete: () -> Unit
 ) {
-    val animation = remember {
-        Animatable(0f)
-    }
+    val progress = remember { Animatable(0f) }
 
     Box(
         modifier
             .height(44.dp)
-            .padding(1.dp)
+            .padding(1.dp),
+        contentAlignment = Alignment.Center
     ) {
         if (selected) {
             Button(
-                onClick = {},
-                modifier = Modifier.fillMaxSize(),
+                {},
+                Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(1.dp)
             ) {
-                Text(label, fontSize = 10.sp)
+                Text(label, fontSize = 10.sp, maxLines = 1)
             }
         } else {
             OutlinedButton(
-                onClick = {},
-                modifier = Modifier.fillMaxSize(),
+                {},
+                Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(1.dp)
             ) {
-                Text(label, fontSize = 10.sp)
+                Text(label, fontSize = 10.sp, maxLines = 1)
             }
         }
 
@@ -1902,33 +1820,28 @@ private fun StatusButton(
                         onPress = {
                             kotlinx.coroutines.coroutineScope {
                                 var completed = false
-
-                                animation.snapTo(0f)
+                                progress.snapTo(0f)
                                 onProgress(0f)
 
                                 val job = launch {
-                                    animation.animateTo(
+                                    progress.animateTo(
                                         1f,
-                                        tween(1500)
+                                        tween(durationMs)
                                     ) {
                                         onProgress(value)
                                     }
-
                                     completed = true
                                 }
 
                                 val released = tryAwaitRelease()
-
                                 if (completed && released) {
                                     onComplete()
                                 } else {
                                     job.cancel()
-                                    animation.snapTo(0f)
+                                    progress.snapTo(0f)
                                     onProgress(0f)
                                 }
-
-                                animation.snapTo(0f)
-                                onProgress(0f)
+                                progress.snapTo(0f)
                             }
                         }
                     )
@@ -1949,7 +1862,6 @@ private fun BorderProgress(
     ) {
         val stroke = 4.dp.toPx()
         val path = AndroidPath()
-
         path.addRoundRect(
             RectF(
                 stroke / 2f,
@@ -1964,7 +1876,6 @@ private fun BorderProgress(
 
         val measure = PathMeasure(path, false)
         val part = AndroidPath()
-
         measure.getSegment(
             0f,
             measure.length * progress.coerceIn(0f, 1f),
@@ -1987,139 +1898,76 @@ private fun BorderProgress(
 
 private fun routeFilter(
     status: String?
-): StatusFilter? {
-    return when (status) {
-        null -> StatusFilter.NONE
-        "FLASH" -> StatusFilter.FLASH
-        "TOP" -> StatusFilter.TOP
-        "ZONE" -> StatusFilter.ZONE
-        "PROJECT" -> StatusFilter.PROJECT
-        else -> null
-    }
+): StatusFilter? = when (status) {
+    null -> StatusFilter.NONE
+    "FLASH" -> StatusFilter.FLASH
+    "TOP" -> StatusFilter.TOP
+    "ZONE" -> StatusFilter.ZONE
+    "PROJECT" -> StatusFilter.PROJECT
+    else -> null
 }
 
 private fun routeComparator(
     column: SortColumn,
     ascending: Boolean
 ): Comparator<RouteEntity> {
-    val comparator = when (column) {
+    val comp = when (column) {
         SortColumn.ROUTE -> compareBy<RouteEntity> {
             it.number
         }
-
         SortColumn.FLASH -> compareByDescending<RouteEntity> {
             it.status == "FLASH"
-        }.thenBy {
-            it.number
-        }
-
+        }.thenBy { it.number }
         SortColumn.TOP -> compareByDescending<RouteEntity> {
             it.status == "TOP"
-        }.thenBy {
-            it.number
-        }
-
+        }.thenBy { it.number }
         SortColumn.ZONE -> compareByDescending<RouteEntity> {
             it.status == "ZONE"
-        }.thenBy {
-            it.number
-        }
-
+        }.thenBy { it.number }
         SortColumn.PROJECT -> compareByDescending<RouteEntity> {
             it.status == "PROJECT"
-        }.thenBy {
-            it.number
-        }
+        }.thenBy { it.number }
     }
-
-    return if (ascending) {
-        comparator
-    } else {
-        comparator.reversed()
-    }
+    return if (ascending) comp else comp.reversed()
 }
 
 private fun Set<StatusFilter>.toggleFilter(
     filter: StatusFilter
-): Set<StatusFilter> {
-    return if (filter in this) {
-        this - filter
-    } else {
-        this + filter
+): Set<StatusFilter> =
+    if (filter in this) this - filter else this + filter
+
+private fun String?.toRouteStatus(): RouteStatus? =
+    this?.let {
+        runCatching { RouteStatus.valueOf(it) }.getOrNull()
     }
-}
 
-private fun String?.toRouteStatus(): RouteStatus? {
-    return this?.let {
-        runCatching {
-            RouteStatus.valueOf(it)
-        }.getOrNull()
-    }
-}
+private fun formatDate(t: Long): String =
+    SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        .format(Date(t))
 
-private fun formatDate(timestamp: Long): String {
-    return SimpleDateFormat(
-        "dd.MM.yyyy",
-        Locale.getDefault()
-    ).format(Date(timestamp))
-}
-
-private fun formatDateTime(timestamp: Long): String {
-    return SimpleDateFormat(
-        "dd.MM.yyyy, HH:mm",
-        Locale.getDefault()
-    ).format(Date(timestamp))
-}
+private fun formatDateTime(t: Long): String =
+    SimpleDateFormat("dd.MM.yyyy, HH:mm", Locale.getDefault())
+        .format(Date(t))
 
 private fun showDatePicker(
     context: Context,
     currentDate: Long?,
     onDateSelected: (Long?) -> Unit
 ) {
-    val calendar = Calendar.getInstance()
-
-    if (currentDate != null) {
-        calendar.timeInMillis = currentDate
-    }
-
+    val c = Calendar.getInstance()
+    if (currentDate != null) c.timeInMillis = currentDate
     DatePickerDialog(
         context,
-        { _, year, month, day ->
-            val selectedDate = Calendar.getInstance().apply {
-                set(
-                    Calendar.YEAR,
-                    year
-                )
-                set(
-                    Calendar.MONTH,
-                    month
-                )
-                set(
-                    Calendar.DAY_OF_MONTH,
-                    day
-                )
-                set(
-                    Calendar.HOUR_OF_DAY,
-                    12
-                )
-                set(
-                    Calendar.MINUTE,
-                    0
-                )
-                set(
-                    Calendar.SECOND,
-                    0
-                )
-                set(
-                    Calendar.MILLISECOND,
-                    0
-                )
-            }
-
-            onDateSelected(selectedDate.timeInMillis)
+        { _, y, m, d ->
+            onDateSelected(
+                Calendar.getInstance().apply {
+                    set(y, m, d, 12, 0, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+            )
         },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
+        c.get(Calendar.YEAR),
+        c.get(Calendar.MONTH),
+        c.get(Calendar.DAY_OF_MONTH)
     ).show()
 }
