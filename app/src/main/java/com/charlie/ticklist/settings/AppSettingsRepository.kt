@@ -58,7 +58,7 @@ class AppSettingsRepository(
         "Einfach war das nicht!",
         "Easy Peasy!",
         "Manche leute haben es einfach drauf!",
-        "Lass es nächstes Mal schwieriger ausseh",
+        "Lass es nächstes Mal schwieriger aussehen!",
         "Ali Cato!",
         "Es kommt nicht immer auf die Größe an!",
         "Stabil!",
