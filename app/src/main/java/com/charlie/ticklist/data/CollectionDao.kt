@@ -13,11 +13,21 @@ interface CollectionDao {
     @Query("SELECT * FROM collections ORDER BY createdAt ASC")
     fun observeAllCollections(): Flow<List<CollectionEntity>>
 
-    @Query("SELECT * FROM collections WHERE id = :id LIMIT 1")
-    suspend fun getCollection(id: Int): CollectionEntity?
+    @Query(
+        """
+        SELECT * FROM collections
+        WHERE id = :id
+        LIMIT 1
+        """
+    )
+    suspend fun getCollection(
+        id: Int
+    ): CollectionEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCollection(collection: CollectionEntity): Long
+    suspend fun insertCollection(
+        collection: CollectionEntity
+    ): Long
 
     @Query(
         """
@@ -31,12 +41,61 @@ interface CollectionDao {
         name: String
     )
 
-    @Query("DELETE FROM collections WHERE id = :id")
-    suspend fun deleteCollectionById(id: Int): Int
+    @Query(
+        """
+        UPDATE collections
+        SET name = :name,
+            notes = :notes,
+            coverPhotoPath = :coverPhotoPath
+        WHERE id = :id
+        """
+    )
+    suspend fun updateCollectionDetails(
+        id: Int,
+        name: String,
+        notes: String?,
+        coverPhotoPath: String?
+    )
+
+    @Query(
+        """
+        UPDATE collections
+        SET notes = :notes
+        WHERE id = :id
+        """
+    )
+    suspend fun updateCollectionNotes(
+        id: Int,
+        notes: String?
+    )
+
+    @Query(
+        """
+        UPDATE collections
+        SET coverPhotoPath = :coverPhotoPath
+        WHERE id = :id
+        """
+    )
+    suspend fun updateCollectionCoverPhoto(
+        id: Int,
+        coverPhotoPath: String?
+    )
+
+    @Query(
+        """
+        DELETE FROM collections
+        WHERE id = :id
+        """
+    )
+    suspend fun deleteCollectionById(
+        id: Int
+    ): Int
 
     @Query("SELECT COUNT(*) FROM collections")
     suspend fun countCollections(): Int
 
     @Delete
-    suspend fun deleteCollection(collection: CollectionEntity)
+    suspend fun deleteCollection(
+        collection: CollectionEntity
+    )
 }
