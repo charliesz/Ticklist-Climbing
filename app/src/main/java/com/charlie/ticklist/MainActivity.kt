@@ -106,6 +106,9 @@ import com.charlie.ticklist.ui.CollectionCoverThumbnail
 
 
 
+
+
+
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
 private enum class StatusFilter { NONE, FLASH, TOP, ZONE, PROJECT }
 private enum class SortColumn { ROUTE, FLASH, TOP, ZONE, PROJECT }
@@ -872,11 +875,21 @@ private fun CollectionRoutesScreen(
 
     val routes by routeDao
         .observeRoutesForCollection(collectionId)
-        .collectAsState(emptyList())
+        .collectAsState(initial = emptyList())
+
+    val currentCollection by collectionDao
+        .observeCollection(collectionId)
+        .collectAsState(initial = null)
+
+    var collectionViewerPath by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    val collectionName = currentCollection?.name ?: ""
 
     val mainPhotos by photoDao
         .observeMainPhotosForCollection(collectionId)
-        .collectAsState(emptyList())
+        .collectAsState(initial = emptyList())
 
     val mainPhotoByRouteId = mainPhotos.associateBy {
         it.routeId
@@ -890,14 +903,9 @@ private fun CollectionRoutesScreen(
         }
     }
 
-    val currentCollection by collectionDao
-        .observeCollection(collectionId)
-        .collectAsState(initial = null)
-
-    val collectionName = currentCollection?.name ?: ""
-
     val allFilters = remember {
-        setOf(
+
+    setOf(
             StatusFilter.NONE,
             StatusFilter.FLASH,
             StatusFilter.TOP,
@@ -954,7 +962,10 @@ private fun CollectionRoutesScreen(
 
     fun openRoute(route: RouteEntity) {
         scope.launch {
-            val current = routeDao.getRoute(route.number) ?: route
+            val current = routeDao.getRoute(
+                number = route.number,
+                collectionId = collectionId
+            ) ?: route
             editingNumber = current.number
             editName = current.name
             editDifficulty = current.difficulty
@@ -1033,12 +1044,14 @@ private fun CollectionRoutesScreen(
                         CollectionCoverThumbnail(
                             thumbnailPath = currentCollection?.coverThumbnailPath,
                             onClick = {
-                                currentCollection?.coverPhotoPath?.let {
-                                    // Viewer wird im nächsten Schritt angeschlossen.
+                                currentCollection?.coverPhotoPath?.let { path ->
+                                    collectionViewerPath = path
                                 }
                             },
                             onLongClick = {
-                                // Bearbeitungsdialog wird im nächsten Schritt angeschlossen.
+                                currentCollection?.coverPhotoPath?.let { path ->
+                                    collectionViewerPath = path
+                                }
                             }
                         )
 
@@ -1047,6 +1060,7 @@ private fun CollectionRoutesScreen(
                         ) {
                             Text("Sammlungen")
                         }
+
 
                         Box {
                             IconButton(
@@ -1300,6 +1314,14 @@ private fun CollectionRoutesScreen(
         ) {
             CelebrationPopup(message = message)
         }
+    }
+    collectionViewerPath?.let { filePath ->
+        CollectionCoverViewerDialog(
+            filePath = filePath,
+            onDismiss = {
+                collectionViewerPath = null
+            }
+        )
     }
 
     if (dialog) {
