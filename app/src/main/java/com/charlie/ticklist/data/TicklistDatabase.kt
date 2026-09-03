@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CollectionEntity::class,
         RoutePhotoEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class TicklistDatabase : RoomDatabase() {
@@ -217,6 +217,20 @@ abstract class TicklistDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+
+            override fun migrate(
+                db: SupportSQLiteDatabase
+            ) {
+                db.execSQL(
+                    """
+                    ALTER TABLE collections
+                    ADD COLUMN coverThumbnailPath TEXT
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: TicklistDatabase? = null
 
@@ -235,7 +249,8 @@ abstract class TicklistDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .build()
 

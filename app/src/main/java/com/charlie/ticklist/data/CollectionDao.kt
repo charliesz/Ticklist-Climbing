@@ -46,7 +46,8 @@ interface CollectionDao {
         UPDATE collections
         SET name = :name,
             notes = :notes,
-            coverPhotoPath = :coverPhotoPath
+            coverPhotoPath = :coverPhotoPath,
+            coverThumbnailPath = :coverThumbnailPath
         WHERE id = :id
         """
     )
@@ -54,7 +55,8 @@ interface CollectionDao {
         id: Int,
         name: String,
         notes: String?,
-        coverPhotoPath: String?
+        coverPhotoPath: String?,
+        coverThumbnailPath: String?
     )
 
     @Query(
@@ -72,13 +74,15 @@ interface CollectionDao {
     @Query(
         """
         UPDATE collections
-        SET coverPhotoPath = :coverPhotoPath
+        SET coverPhotoPath = :coverPhotoPath,
+            coverThumbnailPath = :coverThumbnailPath
         WHERE id = :id
         """
     )
     suspend fun updateCollectionCoverPhoto(
         id: Int,
-        coverPhotoPath: String?
+        coverPhotoPath: String?,
+        coverThumbnailPath: String?
     )
 
     @Query(

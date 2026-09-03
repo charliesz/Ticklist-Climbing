@@ -2,6 +2,7 @@ package com.charlie.ticklist
 
 import android.app.DatePickerDialog
 import android.content.Context
+import android.net.Uri
 import android.graphics.Paint
 import android.graphics.Path as AndroidPath
 import android.graphics.PathMeasure
@@ -75,12 +76,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.charlie.ticklist.data.CollectionEntity
+import com.charlie.ticklist.data.CollectionPhotoStorage
 import com.charlie.ticklist.data.PhotoStorage
 import com.charlie.ticklist.data.RouteEntity
 import com.charlie.ticklist.data.RoutePhotoDao
 import com.charlie.ticklist.data.RoutePhotoEntity
 import com.charlie.ticklist.data.RoutePhotoRepository
 import com.charlie.ticklist.data.TicklistDatabase
+import com.charlie.ticklist.data.rememberPhotoPicker
 import com.charlie.ticklist.settings.AppSettings
 import com.charlie.ticklist.settings.AppSettingsRepository
 import com.charlie.ticklist.settings.SettingsScreen
@@ -260,9 +263,39 @@ private fun CollectionsScreen(
     var deleteDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<CollectionEntity?>(null) }
     var name by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var coverPhotoPath by remember { mutableStateOf<String?>(null) }
+    var coverThumbnailPath by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var newCount by remember { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
+
+    val openCoverPhotoPicker = rememberPhotoPicker { uri: Uri ->
+        val collection = editing
+        if (collection != null) {
+            scope.launch {
+                val oldPath = coverPhotoPath
+                val oldThumbnail = coverThumbnailPath
+                val newPath = CollectionPhotoStorage.saveCoverPhoto(
+                    context = context,
+                    sourceUri = uri,
+                    collectionId = collection.id
+                )
+                val newThumbnail =
+                    CollectionPhotoStorage.createCoverThumbnail(newPath)
+
+                coverPhotoPath = newPath
+                coverThumbnailPath = newThumbnail
+
+                if (oldPath != null || oldThumbnail != null) {
+                    CollectionPhotoStorage.deleteCoverPhoto(
+                        oldPath,
+                        oldThumbnail
+                    )
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (collectionDao.countCollections() == 0) {
@@ -386,18 +419,41 @@ private fun CollectionsScreen(
                             }
                         )
                 ) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text(
-                            collection.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CollectionCoverThumbnail(
+                            thumbnailPath = collection.coverThumbnailPath,
+                            onClick = {
+                                onOpenCollection(collection.id)
+                            },
+                            onLongClick = {
+                                editing = collection
+                                name = collection.name
+                                notes = collection.notes.orEmpty()
+                                coverPhotoPath = collection.coverPhotoPath
+                                coverThumbnailPath = collection.coverThumbnailPath
+                                editDialog = true
+                            }
                         )
-                        Text(
-                            "${collectionRoutes.size} Routen · " +
-                                    "$tops Top ($flashes Flash)",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                collection.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "${collectionRoutes.size} Routen · " +
+                                        "$tops Top ($flashes Flash)",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             }
@@ -494,6 +550,51 @@ private fun CollectionsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("Notizen / Wettbewerbsdaten") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 4,
+                        maxLines = 8
+                    )
+
+                    CollectionCoverThumbnail(
+                        thumbnailPath = coverThumbnailPath,
+                        onClick = openCoverPhotoPicker,
+                        onLongClick = openCoverPhotoPicker
+                    )
+
+                    OutlinedButton(
+                        onClick = openCoverPhotoPicker,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (coverPhotoPath == null) {
+                                "Sammlungsfoto auswählen"
+                            } else {
+                                "Sammlungsfoto ersetzen"
+                            }
+                        )
+                    }
+
+                    if (coverPhotoPath != null) {
+                        TextButton(
+                            onClick = {
+                                CollectionPhotoStorage.deleteCoverPhoto(
+                                    coverPhotoPath,
+                                    coverThumbnailPath
+                                )
+                                coverPhotoPath = null
+                                coverThumbnailPath = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Sammlungsfoto löschen")
+                        }
+                    }
+
                     TextButton(
                         onClick = { deleteDialog = true },
                         modifier = Modifier.fillMaxWidth()
@@ -512,9 +613,12 @@ private fun CollectionsScreen(
                             newCollectionName.isNotBlank()
                         ) {
                             scope.launch {
-                                collectionDao.updateCollectionName(
-                                    collection.id,
-                                    newCollectionName
+                                collectionDao.updateCollectionDetails(
+                                    id = collection.id,
+                                    name = newCollectionName,
+                                    notes = notes.ifBlank { null },
+                                    coverPhotoPath = coverPhotoPath,
+                                    coverThumbnailPath = coverThumbnailPath
                                 )
                                 editDialog = false
                                 editing = null
@@ -557,6 +661,10 @@ private fun CollectionsScreen(
                                 routeDao.deleteRoutesForCollection(
                                     collection.id
                                 )
+                                CollectionPhotoStorage.deleteCoverPhoto(
+                                    collection.coverPhotoPath,
+                                    collection.coverThumbnailPath
+                                )
                                 collectionDao.deleteCollectionById(
                                     collection.id
                                 )
@@ -578,6 +686,58 @@ private fun CollectionsScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun CollectionCoverThumbnail(
+    thumbnailPath: String?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val imageBitmap = remember(thumbnailPath) {
+        val path = thumbnailPath
+        if (path.isNullOrBlank()) {
+            null
+        } else {
+            val file = java.io.File(path)
+            if (file.exists()) {
+                runCatching {
+                    android.graphics.BitmapFactory
+                        .decodeFile(file.absolutePath)
+                        ?.asImageBitmap()
+                }.getOrNull()
+            } else {
+                null
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(thumbnailPath) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { onLongClick() }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        if (imageBitmap != null) {
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = "Sammlungsfoto",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = "+",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
     }
 }
 

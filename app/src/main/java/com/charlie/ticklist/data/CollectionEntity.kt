@@ -16,5 +16,7 @@ data class CollectionEntity(
 
     val notes: String? = null,
 
-    val coverPhotoPath: String? = null
+    val coverPhotoPath: String? = null,
+
+    val coverThumbnailPath: String? = null
 )
