@@ -98,6 +98,12 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import com.charlie.ticklist.settings.AboutScreen
+import com.charlie.ticklist.ui.CollectionCoverViewerDialog
+import com.charlie.ticklist.ui.CollectionCoverThumbnail
+
+
+
+
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -245,52 +251,100 @@ private fun CollectionsScreen(
     onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
-    val db = remember { TicklistDatabase.getDatabase(context) }
+    val db = remember {
+        TicklistDatabase.getDatabase(context)
+    }
+
     val collectionDao = db.collectionDao()
     val routeDao = db.routeDao()
     val scope = rememberCoroutineScope()
 
     val collections by collectionDao
         .observeAllCollections()
-        .collectAsState(emptyList())
+        .collectAsState(initial = emptyList())
 
     val routes by routeDao
         .observeAllRoutes()
-        .collectAsState(emptyList())
+        .collectAsState(initial = emptyList())
 
-    var newDialog by remember { mutableStateOf(false) }
-    var editDialog by remember { mutableStateOf(false) }
-    var deleteDialog by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<CollectionEntity?>(null) }
-    var name by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var coverPhotoPath by remember { mutableStateOf<String?>(null) }
-    var coverThumbnailPath by remember { mutableStateOf<String?>(null) }
-    var newName by remember { mutableStateOf("") }
-    var newCount by remember { mutableStateOf("") }
-    var menuExpanded by remember { mutableStateOf(false) }
+    var newDialog by remember {
+        mutableStateOf(false)
+    }
 
-    val openCoverPhotoPicker = rememberPhotoPicker { uri: Uri ->
+    var editDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var deleteDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var editing by remember {
+        mutableStateOf<CollectionEntity?>(null)
+    }
+
+    var name by remember {
+        mutableStateOf("")
+    }
+
+    var notes by remember {
+        mutableStateOf("")
+    }
+
+    var coverPhotoPath by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var coverThumbnailPath by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var newName by remember {
+        mutableStateOf("")
+    }
+
+    var newCount by remember {
+        mutableStateOf("")
+    }
+
+    var menuExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    var collectionViewerPath by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    val openCoverPhotoPicker = rememberPhotoPicker { uri ->
         val collection = editing
+
         if (collection != null) {
             scope.launch {
-                val oldPath = coverPhotoPath
-                val oldThumbnail = coverThumbnailPath
-                val newPath = CollectionPhotoStorage.saveCoverPhoto(
-                    context = context,
-                    sourceUri = uri,
-                    collectionId = collection.id
-                )
-                val newThumbnail =
-                    CollectionPhotoStorage.createCoverThumbnail(newPath)
+                val oldPhotoPath = coverPhotoPath
+                val oldThumbnailPath = coverThumbnailPath
 
-                coverPhotoPath = newPath
-                coverThumbnailPath = newThumbnail
+                val newPhotoPath =
+                    CollectionPhotoStorage.saveCoverPhoto(
+                        context = context,
+                        sourceUri = uri,
+                        collectionId = collection.id
+                    )
 
-                if (oldPath != null || oldThumbnail != null) {
+                val newThumbnailPath =
+                    CollectionPhotoStorage.createCoverThumbnail(
+                        originalPath = newPhotoPath
+                    )
+
+                coverPhotoPath = newPhotoPath
+                coverThumbnailPath = newThumbnailPath
+
+                if (
+                    oldPhotoPath != null ||
+                    oldThumbnailPath != null
+                ) {
                     CollectionPhotoStorage.deleteCoverPhoto(
-                        oldPath,
-                        oldThumbnail
+                        filePath = oldPhotoPath,
+                        thumbnailPath = oldThumbnailPath
                     )
                 }
             }
@@ -308,6 +362,7 @@ private fun CollectionsScreen(
                 )
             )
         }
+
         if (routeDao.countRoutesForCollection(1) == 0) {
             routeDao.insertRoutes(
                 (1..90).map { number ->
@@ -315,6 +370,7 @@ private fun CollectionsScreen(
                         number = number,
                         name = "%02d".format(number),
                         difficulty = "",
+                        status = null,
                         collectionId = 1
                     )
                 }
@@ -334,31 +390,39 @@ private fun CollectionsScreen(
             ) {
                 Column {
                     Text(
-                        "Meine Sammlungen",
+                        text = "Meine Sammlungen",
                         style = MaterialTheme.typography.headlineSmall
                     )
+
                     Text(
-                        "Kurz tippen zum Öffnen, lange drücken zum Bearbeiten",
+                        text = "Kurz tippen zum Öffnen, " +
+                                "lange drücken zum Bearbeiten",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
 
                 Box {
                     IconButton(
-                        onClick = { menuExpanded = true }
+                        onClick = {
+                            menuExpanded = true
+                        }
                     ) {
                         Icon(
-                            Icons.Default.MoreVert,
+                            imageVector = Icons.Default.MoreVert,
                             contentDescription = "Menü"
                         )
                     }
 
                     DropdownMenu(
                         expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false }
+                        onDismissRequest = {
+                            menuExpanded = false
+                        }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Einstellungen") },
+                            text = {
+                                Text("Einstellungen")
+                            },
                             onClick = {
                                 menuExpanded = false
                                 onOpenSettings()
@@ -366,9 +430,13 @@ private fun CollectionsScreen(
                         )
 
                         DropdownMenuItem(
-                            text = { Text("Sammlung importieren") },
+                            text = {
+                                Text("Sammlung importieren")
+                            },
                             enabled = false,
-                            onClick = { menuExpanded = false }
+                            onClick = {
+                                menuExpanded = false
+                            }
                         )
                     }
                 }
@@ -386,27 +454,36 @@ private fun CollectionsScreen(
             }
         }
     ) { padding ->
+
         LazyColumn(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .navigationBarsPadding(),
             contentPadding = PaddingValues(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(collections, key = { it.id }) { collection ->
+            items(
+                items = collections,
+                key = { collection ->
+                    collection.id
+                }
+            ) { collection ->
+
                 val collectionRoutes = routes.filter {
                     it.collectionId == collection.id
                 }
+
                 val tops = collectionRoutes.count {
                     it.status == "TOP" || it.status == "FLASH"
                 }
+
                 val flashes = collectionRoutes.count {
                     it.status == "FLASH"
                 }
 
                 Card(
-                    Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
                             onClick = {
@@ -415,6 +492,11 @@ private fun CollectionsScreen(
                             onLongClick = {
                                 editing = collection
                                 name = collection.name
+                                notes = collection.notes.orEmpty()
+                                coverPhotoPath =
+                                    collection.coverPhotoPath
+                                coverThumbnailPath =
+                                    collection.coverThumbnailPath
                                 editDialog = true
                             }
                         )
@@ -425,17 +507,15 @@ private fun CollectionsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         CollectionCoverThumbnail(
-                            thumbnailPath = collection.coverThumbnailPath,
+                            thumbnailPath =
+                                collection.coverThumbnailPath,
                             onClick = {
                                 onOpenCollection(collection.id)
                             },
                             onLongClick = {
-                                editing = collection
-                                name = collection.name
-                                notes = collection.notes.orEmpty()
-                                coverPhotoPath = collection.coverPhotoPath
-                                coverThumbnailPath = collection.coverThumbnailPath
-                                editDialog = true
+                                collection.coverPhotoPath?.let { path ->
+                                    collectionViewerPath = path
+                                }
                             }
                         )
 
@@ -443,13 +523,14 @@ private fun CollectionsScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                collection.name,
+                                text = collection.name,
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+
                             Text(
-                                "${collectionRoutes.size} Routen · " +
+                                text = "${collectionRoutes.size} Routen · " +
                                         "$tops Top ($flashes Flash)",
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -460,25 +541,47 @@ private fun CollectionsScreen(
         }
     }
 
+    if (collectionViewerPath != null) {
+        CollectionCoverViewerDialog(
+            filePath = collectionViewerPath!!,
+            onDismiss = {
+                collectionViewerPath = null
+            }
+        )
+    }
+
     if (newDialog) {
         AlertDialog(
-            onDismissRequest = { newDialog = false },
-            title = { Text("Neue Sammlung") },
+            onDismissRequest = {
+                newDialog = false
+            },
+            title = {
+                Text("Neue Sammlung")
+            },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedTextField(
                         value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("Name") },
+                        onValueChange = {
+                            newName = it
+                        },
+                        label = {
+                            Text("Name")
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+
                     OutlinedTextField(
                         value = newCount,
-                        onValueChange = { newCount = it },
-                        label = { Text("Anzahl Routen") },
+                        onValueChange = {
+                            newCount = it
+                        },
+                        label = {
+                            Text("Anzahl Routen")
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -489,10 +592,11 @@ private fun CollectionsScreen(
                     onClick = {
                         val collectionName = newName.trim()
                         val count = newCount.toIntOrNull() ?: 0
+
                         if (collectionName.isNotBlank()) {
                             scope.launch {
-                                val id = collectionDao
-                                    .insertCollection(
+                                val collectionId =
+                                    collectionDao.insertCollection(
                                         CollectionEntity(
                                             name = collectionName,
                                             discipline = "BOULDER",
@@ -500,20 +604,21 @@ private fun CollectionsScreen(
                                                 System.currentTimeMillis()
                                         )
                                     ).toInt()
+
                                 if (count > 0) {
                                     routeDao.insertRoutes(
                                         (1..count).map { number ->
                                             RouteEntity(
                                                 number = number,
-                                                name = "%02d".format(
-                                                    number
-                                                ),
+                                                name = "%02d".format(number),
                                                 difficulty = "",
-                                                collectionId = id
+                                                status = null,
+                                                collectionId = collectionId
                                             )
                                         }
                                     )
                                 }
+
                                 newDialog = false
                             }
                         }
@@ -524,7 +629,9 @@ private fun CollectionsScreen(
             },
             dismissButton = {
                 TextButton(
-                    onClick = { newDialog = false }
+                    onClick = {
+                        newDialog = false
+                    }
                 ) {
                     Text("Abbrechen")
                 }
@@ -538,23 +645,33 @@ private fun CollectionsScreen(
                 editDialog = false
                 editing = null
             },
-            title = { Text("Sammlung bearbeiten") },
+            title = {
+                Text("Sammlung bearbeiten")
+            },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it },
-                        label = { Text("Name") },
+                        onValueChange = {
+                            name = it
+                        },
+                        label = {
+                            Text("Name")
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
 
                     OutlinedTextField(
                         value = notes,
-                        onValueChange = { notes = it },
-                        label = { Text("Notizen / Wettbewerbsdaten") },
+                        onValueChange = {
+                            notes = it
+                        },
+                        label = {
+                            Text("Notizen / Wettbewerbsdaten")
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 4,
                         maxLines = 8
@@ -562,12 +679,21 @@ private fun CollectionsScreen(
 
                     CollectionCoverThumbnail(
                         thumbnailPath = coverThumbnailPath,
-                        onClick = openCoverPhotoPicker,
-                        onLongClick = openCoverPhotoPicker
+                        onClick = {
+                            if (coverPhotoPath != null) {
+                                collectionViewerPath =
+                                    coverPhotoPath
+                            }
+                        },
+                        onLongClick = {
+                            openCoverPhotoPicker()
+                        }
                     )
 
                     OutlinedButton(
-                        onClick = openCoverPhotoPicker,
+                        onClick = {
+                            openCoverPhotoPicker()
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
@@ -582,10 +708,13 @@ private fun CollectionsScreen(
                     if (coverPhotoPath != null) {
                         TextButton(
                             onClick = {
-                                CollectionPhotoStorage.deleteCoverPhoto(
-                                    coverPhotoPath,
-                                    coverThumbnailPath
-                                )
+                                CollectionPhotoStorage
+                                    .deleteCoverPhoto(
+                                        filePath = coverPhotoPath,
+                                        thumbnailPath =
+                                            coverThumbnailPath
+                                    )
+
                                 coverPhotoPath = null
                                 coverThumbnailPath = null
                             },
@@ -596,7 +725,9 @@ private fun CollectionsScreen(
                     }
 
                     TextButton(
-                        onClick = { deleteDialog = true },
+                        onClick = {
+                            deleteDialog = true
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Sammlung löschen")
@@ -607,19 +738,24 @@ private fun CollectionsScreen(
                 Button(
                     onClick = {
                         val collection = editing
-                        val newCollectionName = name.trim()
+                        val collectionName = name.trim()
+
                         if (
                             collection != null &&
-                            newCollectionName.isNotBlank()
+                            collectionName.isNotBlank()
                         ) {
                             scope.launch {
                                 collectionDao.updateCollectionDetails(
                                     id = collection.id,
-                                    name = newCollectionName,
-                                    notes = notes.ifBlank { null },
+                                    name = collectionName,
+                                    notes = notes.ifBlank {
+                                        null
+                                    },
                                     coverPhotoPath = coverPhotoPath,
-                                    coverThumbnailPath = coverThumbnailPath
+                                    coverThumbnailPath =
+                                        coverThumbnailPath
                                 )
+
                                 editDialog = false
                                 editing = null
                             }
@@ -644,8 +780,12 @@ private fun CollectionsScreen(
 
     if (deleteDialog) {
         AlertDialog(
-            onDismissRequest = { deleteDialog = false },
-            title = { Text("Sammlung löschen?") },
+            onDismissRequest = {
+                deleteDialog = false
+            },
+            title = {
+                Text("Sammlung löschen?")
+            },
             text = {
                 Text(
                     "Die Sammlung und alle zugehörigen Routen " +
@@ -656,18 +796,25 @@ private fun CollectionsScreen(
                 Button(
                     onClick = {
                         val collection = editing
+
                         if (collection != null) {
                             scope.launch {
                                 routeDao.deleteRoutesForCollection(
                                     collection.id
                                 )
-                                CollectionPhotoStorage.deleteCoverPhoto(
-                                    collection.coverPhotoPath,
-                                    collection.coverThumbnailPath
-                                )
+
+                                CollectionPhotoStorage
+                                    .deleteCoverPhoto(
+                                        filePath =
+                                            collection.coverPhotoPath,
+                                        thumbnailPath =
+                                            collection.coverThumbnailPath
+                                    )
+
                                 collectionDao.deleteCollectionById(
                                     collection.id
                                 )
+
                                 deleteDialog = false
                                 editDialog = false
                                 editing = null
@@ -680,7 +827,9 @@ private fun CollectionsScreen(
             },
             dismissButton = {
                 TextButton(
-                    onClick = { deleteDialog = false }
+                    onClick = {
+                        deleteDialog = false
+                    }
                 ) {
                     Text("Abbrechen")
                 }
@@ -689,57 +838,7 @@ private fun CollectionsScreen(
     }
 }
 
-@Composable
-private fun CollectionCoverThumbnail(
-    thumbnailPath: String?,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    val imageBitmap = remember(thumbnailPath) {
-        val path = thumbnailPath
-        if (path.isNullOrBlank()) {
-            null
-        } else {
-            val file = java.io.File(path)
-            if (file.exists()) {
-                runCatching {
-                    android.graphics.BitmapFactory
-                        .decodeFile(file.absolutePath)
-                        ?.asImageBitmap()
-                }.getOrNull()
-            } else {
-                null
-            }
-        }
-    }
 
-    Box(
-        modifier = Modifier
-            .size(64.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .pointerInput(thumbnailPath) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onLongClick() }
-                )
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        if (imageBitmap != null) {
-            Image(
-                bitmap = imageBitmap,
-                contentDescription = "Sammlungsfoto",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Text(
-                text = "+",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-    }
-}
 
 @Composable
 private fun CollectionRoutesScreen(
@@ -791,12 +890,11 @@ private fun CollectionRoutesScreen(
         }
     }
 
-    var collectionName by remember { mutableStateOf("") }
+    val currentCollection by collectionDao
+        .observeCollection(collectionId)
+        .collectAsState(initial = null)
 
-    LaunchedEffect(collectionId) {
-        collectionName =
-            collectionDao.getCollection(collectionId)?.name ?: ""
-    }
+    val collectionName = currentCollection?.name ?: ""
 
     val allFilters = remember {
         setOf(
@@ -916,23 +1014,37 @@ private fun CollectionRoutesScreen(
                         verticalAlignment =
                             Alignment.CenterVertically
                     ) {
-                        Column(Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
-                                collectionName,
-                                style =
-                                    MaterialTheme.typography
-                                        .titleMedium
+                                text = collectionName,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
+
                             Text(
-                                "${shown.size} von ${routes.size} " +
-                                        "Routen",
-                                style =
-                                    MaterialTheme.typography
-                                        .bodySmall
+                                text = "${shown.size} von ${routes.size} Routen",
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
 
-                        TextButton(onClick = onBack) {
+                        CollectionCoverThumbnail(
+                            thumbnailPath = currentCollection?.coverThumbnailPath,
+                            onClick = {
+                                currentCollection?.coverPhotoPath?.let {
+                                    // Viewer wird im nächsten Schritt angeschlossen.
+                                }
+                            },
+                            onLongClick = {
+                                // Bearbeitungsdialog wird im nächsten Schritt angeschlossen.
+                            }
+                        )
+
+                        TextButton(
+                            onClick = onBack
+                        ) {
                             Text("Sammlungen")
                         }
 

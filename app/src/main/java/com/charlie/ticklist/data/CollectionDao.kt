@@ -24,6 +24,17 @@ interface CollectionDao {
         id: Int
     ): CollectionEntity?
 
+    @Query(
+        """
+        SELECT * FROM collections
+        WHERE id = :id
+        LIMIT 1
+        """
+    )
+    fun observeCollection(
+        id: Int
+    ): Flow<CollectionEntity?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCollection(
         collection: CollectionEntity
