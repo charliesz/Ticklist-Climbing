@@ -100,6 +100,9 @@ import java.util.Locale
 import com.charlie.ticklist.settings.AboutScreen
 import com.charlie.ticklist.ui.CollectionCoverViewerDialog
 import com.charlie.ticklist.ui.CollectionCoverThumbnail
+import com.charlie.ticklist.data.CollectionExportRepository
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 
 
@@ -856,11 +859,41 @@ private fun CollectionRoutesScreen(
     val routeDao = db.routeDao()
     val collectionDao = db.collectionDao()
     val photoDao = db.routePhotoDao()
-    val photoRepository = remember {
-        RoutePhotoRepository(context, photoDao)
-    }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+
+    val photoRepository = remember {
+        RoutePhotoRepository(
+            context = context,
+            photoDao = photoDao
+        )
+    }
+
+    val exportRepository = remember {
+        CollectionExportRepository(
+            context = context,
+            routeDao = routeDao,
+            collectionDao = collectionDao,
+            routePhotoDao = photoDao
+        )
+    }
+
+    val exportLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument(
+                "application/zip"
+            )
+        ) { uri: Uri? ->
+            if (uri != null) {
+                scope.launch {
+                    exportRepository.exportCollection(
+                        collectionId = collectionId,
+                        destinationUri = uri
+                    )
+                }
+            }
+        }
+
 
     var celebrationMessage by remember {
         mutableStateOf<String?>(null)
@@ -1092,13 +1125,14 @@ private fun CollectionRoutesScreen(
 
                                 DropdownMenuItem(
                                     text = {
-                                        Text(
-                                            "Sammlung exportieren"
-                                        )
+                                        Text("Sammlung exportieren")
                                     },
-                                    enabled = false,
                                     onClick = {
                                         menuExpanded = false
+
+                                        exportLauncher.launch(
+                                            "${collectionName.toSafeFileName("ticklist")}.zip"
+                                        )
                                     }
                                 )
 
@@ -2357,4 +2391,36 @@ private fun showDatePicker(
         c.get(Calendar.MONTH),
         c.get(Calendar.DAY_OF_MONTH)
     ).show()
+}fun String.toSafeFileName(
+    prefix: String = ""
+): String {
+    val cleanedName = trim()
+        .replace(Regex("\\s+"), "_")
+        .replace(
+            Regex("""[^\p{L}\p{N}._-]"""),
+            "_"
+        )
+        .replace(
+            Regex("_+"),
+            "_"
+        )
+        .trim('_', '.', ' ')
+
+    return when {
+        prefix.isNotBlank() && cleanedName.isNotBlank() -> {
+            "${prefix}_$cleanedName"
+        }
+
+        cleanedName.isNotBlank() -> {
+            cleanedName
+        }
+
+        prefix.isNotBlank() -> {
+            prefix
+        }
+
+        else -> {
+            "ticklist_export"
+        }
+    }
 }

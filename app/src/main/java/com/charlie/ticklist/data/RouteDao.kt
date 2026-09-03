@@ -90,6 +90,17 @@ interface RouteDao {
 
     @Query(
         """
+    SELECT * FROM routes
+    WHERE collectionId = :collectionId
+    ORDER BY number ASC
+    """
+    )
+    suspend fun observeRoutesForCollectionOnce(
+        collectionId: Int
+    ): List<RouteEntity>
+
+    @Query(
+        """
         SELECT COUNT(*) FROM routes
         WHERE collectionId = :collectionId
         """
