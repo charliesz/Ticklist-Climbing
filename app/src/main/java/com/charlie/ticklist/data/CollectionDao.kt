@@ -105,9 +105,12 @@ interface CollectionDao {
     suspend fun deleteCollectionById(
         id: Int
     ): Int
+    @Query("SELECT * FROM collections ORDER BY createdAt ASC")
+    suspend fun observeAllCollectionsOnce(): List<CollectionEntity>
 
     @Query("SELECT COUNT(*) FROM collections")
     suspend fun countCollections(): Int
+
 
     @Delete
     suspend fun deleteCollection(

@@ -104,7 +104,12 @@ import com.charlie.ticklist.data.CollectionExportRepository
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.charlie.ticklist.data.ExportState
+import com.charlie.ticklist.data.ImportState
 import com.charlie.ticklist.ui.ExportProgressDialog
+import com.charlie.ticklist.ui.ImportProgressDialog
+import com.charlie.ticklist.data.CollectionImportRepository
+
+
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -255,10 +260,61 @@ private fun CollectionsScreen(
     val db = remember {
         TicklistDatabase.getDatabase(context)
     }
-
+    var importState by remember {
+        mutableStateOf<ImportState>(ImportState.Idle)
+    }
     val collectionDao = db.collectionDao()
     val routeDao = db.routeDao()
     val scope = rememberCoroutineScope()
+    val photoDao = db.routePhotoDao()
+
+    val importRepository = remember {
+        CollectionImportRepository(
+            context = context,
+            collectionDao = collectionDao,
+            routeDao = routeDao,
+            routePhotoDao = photoDao
+        )
+    }
+
+    val importLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument()
+        ) { uri: Uri? ->
+            if (uri != null) {
+                scope.launch {
+                    importState = ImportState.Running(
+                        currentFile = 0,
+                        totalFiles = 0,
+                        currentName = "Import wird vorbereitet"
+                    )
+
+                    try {
+                        val importedName =
+                            importRepository.importAsNewCollection(
+                                sourceUri = uri,
+                                onProgress = { current, total, name ->
+                                    importState = ImportState.Running(
+                                        currentFile = current,
+                                        totalFiles = total,
+                                        currentName = name
+                                    )
+                                }
+                            )
+
+                        importState = ImportState.Completed(
+                            collectionName = importedName
+                        )
+                    } catch (error: Exception) {
+                        importState = ImportState.Failed(
+                            message = error.message
+                                ?: "Der Import ist fehlgeschlagen."
+                        )
+                    }
+                }
+            }
+        }
+
 
     val collections by collectionDao
         .observeAllCollections()
@@ -434,9 +490,11 @@ private fun CollectionsScreen(
                             text = {
                                 Text("Sammlung importieren")
                             },
-                            enabled = false,
                             onClick = {
                                 menuExpanded = false
+                                importLauncher.launch(
+                                    arrayOf("application/zip", "application/octet-stream")
+                                )
                             }
                         )
                     }
@@ -837,6 +895,64 @@ private fun CollectionsScreen(
             }
         )
     }
+    when (val state = importState) {
+        ImportState.Idle -> Unit
+
+        is ImportState.Running -> {
+            ImportProgressDialog(state = state)
+        }
+
+        is ImportState.Completed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    importState = ImportState.Idle
+                },
+                title = {
+                    Text("Import abgeschlossen")
+                },
+                text = {
+                    Text(
+                        "Die Sammlung „${state.collectionName}“ " +
+                                "wurde erfolgreich importiert."
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            importState = ImportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        is ImportState.Failed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    importState = ImportState.Idle
+                },
+                title = {
+                    Text("Import fehlgeschlagen")
+                },
+                text = {
+                    Text(state.message)
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            importState = ImportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+    }
+
+
 }
 
 
