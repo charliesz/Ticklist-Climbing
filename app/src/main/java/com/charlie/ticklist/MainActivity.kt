@@ -108,8 +108,7 @@ import com.charlie.ticklist.data.ImportState
 import com.charlie.ticklist.ui.ExportProgressDialog
 import com.charlie.ticklist.ui.ImportProgressDialog
 import com.charlie.ticklist.data.CollectionImportRepository
-
-
+import com.charlie.ticklist.settings.ProgressTransferScreen
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -157,8 +156,35 @@ private fun TicklistApp(
     var showAbout by remember {
         mutableStateOf(false)
     }
+    var showProgressTransfer by remember {
+        mutableStateOf(false)
+    }
+    var progressTransferSourceId by remember {
+        mutableStateOf<Int?>(null)
+    }
 
     when {
+        showProgressTransfer && progressTransferSourceId != null -> {
+            BackHandler {
+                showProgressTransfer = false
+            }
+
+            val context = LocalContext.current
+            val database = remember {
+                TicklistDatabase.getDatabase(context)
+            }
+
+            ProgressTransferScreen(
+                sourceCollectionId = progressTransferSourceId!!,
+                collectionDao = database.collectionDao(),
+                routeDao = database.routeDao(),
+                onBack = {
+                    showProgressTransfer = false
+                    progressTransferSourceId = null
+                }
+            )
+        }
+
         showAbout -> {
             BackHandler {
                 showAbout = false
@@ -243,8 +269,13 @@ private fun TicklistApp(
                 },
                 onOpenSettings = {
                     showSettings = true
+                },
+                onOpenProgressTransfer = {
+                    progressTransferSourceId = collectionId
+                    showProgressTransfer = true
                 }
             )
+
         }
     }
 }
@@ -963,7 +994,8 @@ private fun CollectionRoutesScreen(
     settings: AppSettings,
     settingsRepository: AppSettingsRepository,
     onBack: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenProgressTransfer: () -> Unit
 ) {
     val context = LocalContext.current
     val db = remember { TicklistDatabase.getDatabase(context) }
@@ -1080,7 +1112,7 @@ private fun CollectionRoutesScreen(
 
     val allFilters = remember {
 
-    setOf(
+        setOf(
             StatusFilter.NONE,
             StatusFilter.FLASH,
             StatusFilter.TOP,
@@ -1281,13 +1313,11 @@ private fun CollectionRoutesScreen(
 
                                 DropdownMenuItem(
                                     text = {
-                                        Text(
-                                            "Fortschritt übertragen"
-                                        )
+                                        Text("Fortschritt übertragen")
                                     },
-                                    enabled = false,
                                     onClick = {
                                         menuExpanded = false
+                                        onOpenProgressTransfer()
                                     }
                                 )
                             }

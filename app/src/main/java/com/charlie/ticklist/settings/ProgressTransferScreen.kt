@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -28,16 +29,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.charlie.ticklist.data.CollectionDao
 import com.charlie.ticklist.data.CollectionEntity
 import com.charlie.ticklist.data.ProgressTransferPreview
 import com.charlie.ticklist.data.ProgressTransferRepository
 import com.charlie.ticklist.data.ProgressTransferState
 import com.charlie.ticklist.data.RouteDao
-import com.charlie.ticklist.data.CollectionDao
 import kotlinx.coroutines.launch
 
 @Composable
 fun ProgressTransferScreen(
+    sourceCollectionId: Int,
     collectionDao: CollectionDao,
     routeDao: RouteDao,
     onBack: () -> Unit
@@ -48,16 +50,12 @@ fun ProgressTransferScreen(
         .observeAllCollections()
         .collectAsState(initial = emptyList())
 
-    var sourceCollection by remember {
-        mutableStateOf<CollectionEntity?>(null)
+    val sourceCollection = collections.firstOrNull {
+        it.id == sourceCollectionId
     }
 
     var targetCollection by remember {
         mutableStateOf<CollectionEntity?>(null)
-    }
-
-    var sourceMenuExpanded by remember {
-        mutableStateOf(false)
     }
 
     var targetMenuExpanded by remember {
@@ -81,27 +79,33 @@ fun ProgressTransferScreen(
         )
     }
 
-    LaunchedEffect(collections) {
-        if (collections.size >= 2) {
-            if (sourceCollection == null) {
-                sourceCollection = collections[0]
-            }
+    val targetCollections = collections.filter {
+        it.id != sourceCollectionId
+    }
 
-            if (targetCollection == null) {
-                targetCollection = collections[1]
-            }
-        } else if (collections.size == 1) {
-            if (sourceCollection == null) {
-                sourceCollection = collections[0]
-            }
+    LaunchedEffect(targetCollections) {
+        if (
+            targetCollection == null &&
+            targetCollections.isNotEmpty()
+        ) {
+            targetCollection = targetCollections.first()
         }
     }
+
+    val sourceId = sourceCollection?.id
+    val targetId = targetCollection?.id
+
+    val canCheckRoutes =
+        sourceId != null &&
+                targetId != null &&
+                sourceId != targetId
 
     Scaffold(
         topBar = {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .padding(
                         horizontal = 12.dp,
                         vertical = 8.dp
@@ -133,22 +137,16 @@ fun ProgressTransferScreen(
             CollectionSelector(
                 label = "Von Sammlung",
                 selected = sourceCollection,
-                collections = collections,
-                expanded = sourceMenuExpanded,
-                onExpandedChange = {
-                    sourceMenuExpanded = it
-                },
-                onSelected = {
-                    sourceCollection = it
-                    sourceMenuExpanded = false
-                    transferState = ProgressTransferState.Idle
-                }
+                collections = listOfNotNull(sourceCollection),
+                expanded = false,
+                onExpandedChange = {},
+                onSelected = {}
             )
 
             CollectionSelector(
                 label = "Nach Sammlung",
                 selected = targetCollection,
-                collections = collections,
+                collections = targetCollections,
                 expanded = targetMenuExpanded,
                 onExpandedChange = {
                     targetMenuExpanded = it
@@ -188,31 +186,35 @@ fun ProgressTransferScreen(
 
             Button(
                 onClick = {
-                    val source = sourceCollection
-                    val target = targetCollection
+                    val selectedSourceId = sourceId
+                    val selectedTargetId = targetId
 
-                    if (source != null && target != null) {
+                    if (
+                        selectedSourceId != null &&
+                        selectedTargetId != null
+                    ) {
                         scope.launch {
                             transferState =
                                 try {
                                     ProgressTransferState.Preview(
                                         repository.createPreview(
-                                            sourceCollectionId = source.id,
-                                            targetCollectionId = target.id
+                                            sourceCollectionId =
+                                                selectedSourceId,
+                                            targetCollectionId =
+                                                selectedTargetId
                                         )
                                     )
                                 } catch (error: Exception) {
                                     ProgressTransferState.Failed(
                                         error.message
-                                            ?: "Vorschau konnte nicht erstellt werden."
+                                            ?: "Die Vorschau konnte nicht " +
+                                            "erstellt werden."
                                     )
                                 }
                         }
                     }
                 },
-                enabled = sourceCollection != null &&
-                        targetCollection != null &&
-                        sourceCollection?.id != targetCollection?.id,
+                enabled = canCheckRoutes,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Routen prüfen")
@@ -220,7 +222,6 @@ fun ProgressTransferScreen(
 
             TransferStateContent(
                 state = transferState,
-                overwriteExistingProgress = overwriteExistingProgress,
                 onTransfer = { preview ->
                     scope.launch {
                         transferState =
@@ -238,7 +239,8 @@ fun ProgressTransferScreen(
                             } catch (error: Exception) {
                                 ProgressTransferState.Failed(
                                     error.message
-                                        ?: "Fortschritt konnte nicht übertragen werden."
+                                        ?: "Der Fortschritt konnte nicht " +
+                                        "übertragen werden."
                                 )
                             }
                     }
@@ -268,52 +270,41 @@ private fun CollectionSelector(
             style = MaterialTheme.typography.labelLarge
         )
 
-        BoxWithDropdown(
-            selectedText = selected?.name ?: "Auswählen",
-            expanded = expanded,
-            onExpandedChange = onExpandedChange
-        ) {
-            collections.forEach { collection ->
-                DropdownMenuItem(
-                    text = {
-                        Text(collection.name)
-                    },
-                    onClick = {
-                        onSelected(collection)
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BoxWithDropdown(
-    selectedText: String,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    content: @Composable () -> Unit
-) {
-    androidx.compose.foundation.layout.Box {
-        OutlinedButton(
-            onClick = {
-                onExpandedChange(true)
-            },
+        androidx.compose.foundation.layout.Box(
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = selectedText,
-                maxLines = 1
-            )
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = {
-                onExpandedChange(false)
+            OutlinedButton(
+                onClick = {
+                    if (collections.isNotEmpty()) {
+                        onExpandedChange(true)
+                    }
+                },
+                enabled = collections.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = selected?.name ?: "Auswählen",
+                    maxLines = 1
+                )
             }
-        ) {
-            content()
+
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = {
+                    onExpandedChange(false)
+                }
+            ) {
+                collections.forEach { collection ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(collection.name)
+                        },
+                        onClick = {
+                            onSelected(collection)
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -321,14 +312,14 @@ private fun BoxWithDropdown(
 @Composable
 private fun TransferStateContent(
     state: ProgressTransferState,
-    overwriteExistingProgress: Boolean,
     onTransfer: (ProgressTransferPreview) -> Unit,
     onReset: () -> Unit
 ) {
     when (state) {
         ProgressTransferState.Idle -> {
             Text(
-                text = "Wähle eine Quell- und Zielsammlung.",
+                text = "Wähle eine Zielsammlung und prüfe " +
+                        "anschließend die Routen.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -356,7 +347,9 @@ private fun TransferStateContent(
                     )
                 },
                 confirmButton = {
-                    Button(onClick = onReset) {
+                    Button(
+                        onClick = onReset
+                    ) {
                         Text("OK")
                     }
                 }
@@ -373,7 +366,9 @@ private fun TransferStateContent(
                     Text(state.message)
                 },
                 confirmButton = {
-                    Button(onClick = onReset) {
+                    Button(
+                        onClick = onReset
+                    ) {
                         Text("OK")
                     }
                 }
@@ -400,25 +395,11 @@ private fun TransferPreviewCard(
                 style = MaterialTheme.typography.titleMedium
             )
 
-            Text(
-                text = "Quelle: ${preview.sourceCollectionName}"
-            )
-
-            Text(
-                text = "Ziel: ${preview.targetCollectionName}"
-            )
-
-            Text(
-                text = "${preview.sourceRouteCount} Routen in der Quelle"
-            )
-
-            Text(
-                text = "${preview.targetRouteCount} Routen im Ziel"
-            )
-
-            Text(
-                text = "${preview.matchingRouteCount} Routen zuordenbar"
-            )
+            Text("Quelle: ${preview.sourceCollectionName}")
+            Text("Ziel: ${preview.targetCollectionName}")
+            Text("${preview.sourceRouteCount} Routen in der Quelle")
+            Text("${preview.targetRouteCount} Routen im Ziel")
+            Text("${preview.matchingRouteCount} Routen zuordenbar")
 
             if (preview.canTransfer) {
                 Text(
