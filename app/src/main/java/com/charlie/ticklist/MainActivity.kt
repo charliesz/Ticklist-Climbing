@@ -103,13 +103,8 @@ import com.charlie.ticklist.ui.CollectionCoverThumbnail
 import com.charlie.ticklist.data.CollectionExportRepository
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-
-
-
-
-
-
-
+import com.charlie.ticklist.data.ExportState
+import com.charlie.ticklist.ui.ExportProgressDialog
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -878,6 +873,10 @@ private fun CollectionRoutesScreen(
         )
     }
 
+    var exportState by remember {
+        mutableStateOf<ExportState>(ExportState.Idle)
+    }
+
     val exportLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.CreateDocument(
@@ -886,13 +885,40 @@ private fun CollectionRoutesScreen(
         ) { uri: Uri? ->
             if (uri != null) {
                 scope.launch {
-                    exportRepository.exportCollection(
-                        collectionId = collectionId,
-                        destinationUri = uri
+                    exportState = ExportState.Running(
+                        currentFile = 0,
+                        totalFiles = 0,
+                        currentName = "Export wird vorbereitet"
                     )
+
+                    try {
+                        exportRepository.exportCollection(
+                            collectionId = collectionId,
+                            destinationUri = uri,
+                            onProgress = { current, total, name ->
+                                exportState = ExportState.Running(
+                                    currentFile = current,
+                                    totalFiles = total,
+                                    currentName = name
+                                )
+                            }
+                        )
+
+                        exportState = ExportState.Completed
+                    } catch (error: Exception) {
+                        exportState = ExportState.Failed(
+                            message = error.message
+                                ?: "Der Export ist fehlgeschlagen."
+                        )
+                    }
                 }
             }
         }
+
+
+
+
+
 
 
     var celebrationMessage by remember {
@@ -1136,6 +1162,7 @@ private fun CollectionRoutesScreen(
                                     }
                                 )
 
+
                                 DropdownMenuItem(
                                     text = {
                                         Text(
@@ -1221,7 +1248,9 @@ private fun CollectionRoutesScreen(
                 Text("+")
             }
         }
-    ) { padding ->
+
+    )
+    { padding ->
         LazyColumn(
             Modifier
                 .fillMaxSize()
@@ -1532,6 +1561,63 @@ private fun CollectionRoutesScreen(
                 }
             }
         )
+    }
+    when (val state = exportState) {
+        ExportState.Idle -> Unit
+
+        is ExportState.Running -> {
+            ExportProgressDialog(
+                state = state
+            )
+        }
+
+        ExportState.Completed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    exportState = ExportState.Idle
+                },
+                title = {
+                    Text("Export abgeschlossen")
+                },
+                text = {
+                    Text(
+                        "Die Sammlung wurde erfolgreich als ZIP-Datei gespeichert."
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            exportState = ExportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        is ExportState.Failed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    exportState = ExportState.Idle
+                },
+                title = {
+                    Text("Export fehlgeschlagen")
+                },
+                text = {
+                    Text(state.message)
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            exportState = ExportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
     }
 }
 

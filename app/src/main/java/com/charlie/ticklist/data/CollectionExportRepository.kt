@@ -4,8 +4,11 @@ import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -18,52 +21,116 @@ class CollectionExportRepository(
 
     suspend fun exportCollection(
         collectionId: Int,
-        destinationUri: Uri
+        destinationUri: Uri,
+        onProgress: suspend (
+            Int,
+            Int,
+            String
+        ) -> Unit
     ) {
         val collection = collectionDao.getCollection(collectionId)
             ?: error("Sammlung nicht gefunden.")
 
-        val routes = routeDao
-            .observeRoutesForCollectionOnce(collectionId)
+        val routes = routeDao.getRoutesForCollection(collectionId)
 
-        val collectionPhotos = routes
-            .flatMap { route ->
+        val routePhotos = mutableMapOf<
+                Long,
+                List<RoutePhotoEntity>
+                >()
+
+        for (route in routes) {
+            routePhotos[route.id] =
                 routePhotoDao.getPhotosForRoute(route.id)
-            }
+        }
 
-        context.contentResolver.openOutputStream(destinationUri).use {
-                outputStream ->
-            requireNotNull(outputStream) {
-                "Die Zieldatei konnte nicht geöffnet werden."
-            }
+        val exportFiles = buildExportFiles(
+            collection = collection,
+            routes = routes,
+            routePhotos = routePhotos
+        )
 
-            ZipOutputStream(
-                BufferedOutputStream(outputStream)
-            ).use { zip ->
-                writeManifest(zip)
-                writeCollection(zip, collection)
-                writeRoutes(zip, routes)
+        val temporaryZip = File(
+            context.cacheDir,
+            "ticklist_export_${System.currentTimeMillis()}.zip"
+        )
 
-                writeCollectionCover(
-                    zip = zip,
-                    collection = collection
-                )
+        try {
+            createTemporaryZip(
+                temporaryZip = temporaryZip,
+                collection = collection,
+                routes = routes,
+                exportFiles = exportFiles,
+                onProgress = onProgress
+            )
 
-                routes.forEach { route ->
-                    val photos = collectionPhotos.filter {
-                        it.routeId == route.id
-                    }
-
-                    photos.forEach { photo ->
-                        writePhoto(
-                            zip = zip,
-                            route = route,
-                            photo = photo
-                        )
-                    }
-                }
+            copyCompletedZip(
+                temporaryZip = temporaryZip,
+                destinationUri = destinationUri
+            )
+        } finally {
+            if (temporaryZip.exists()) {
+                temporaryZip.delete()
             }
         }
+    }
+
+    private suspend fun createTemporaryZip(
+        temporaryZip: File,
+        collection: CollectionEntity,
+        routes: List<RouteEntity>,
+        exportFiles: List<ExportFile>,
+        onProgress: suspend (
+            Int,
+            Int,
+            String
+        ) -> Unit
+    ) {
+        ZipOutputStream(
+            BufferedOutputStream(
+                FileOutputStream(temporaryZip)
+            )
+        ).use { zip ->
+
+            writeManifest(zip)
+            writeCollection(zip, collection)
+            writeRoutes(zip, routes)
+
+            var currentFile = 0
+
+            for (exportFile in exportFiles) {
+                copyFileToZip(
+                    zip = zip,
+                    exportFile = exportFile
+                )
+
+                currentFile++
+
+                onProgress(
+                    currentFile,
+                    exportFiles.size,
+                    exportFile.zipPath
+                )
+            }
+        }
+    }
+
+    private fun copyCompletedZip(
+        temporaryZip: File,
+        destinationUri: Uri
+    ) {
+        context.contentResolver
+            .openOutputStream(destinationUri)
+            .use { output ->
+                requireNotNull(output) {
+                    "Die Zieldatei konnte nicht geöffnet werden."
+                }
+
+                temporaryZip.inputStream().use { input ->
+                    input.copyTo(output)
+                }
+
+                output.flush()
+            }
     }
 
     private fun writeManifest(
@@ -92,7 +159,20 @@ class CollectionExportRepository(
             .put("discipline", collection.discipline)
             .put("createdAt", collection.createdAt)
             .put("notes", collection.notes ?: JSONObject.NULL)
+            .put(
+                "coverPhotoPath",
+                collection.coverPhotoPath ?: JSONObject.NULL
+            )
+            .put(
+                "coverThumbnailPath",
+                collection.coverThumbnailPath
+                    ?: JSONObject.NULL
+            )
 
+        // Wichtig:
+        // Hier werden bewusst keine Bilddateien geschrieben.
+        // Cover und Cover-Thumbnail kommen ausschließlich
+        // über buildExportFiles().
         writeTextEntry(
             zip = zip,
             path = "collection.json",
@@ -106,7 +186,7 @@ class CollectionExportRepository(
     ) {
         val routeArray = JSONArray()
 
-        routes.forEach { route ->
+        for (route in routes) {
             routeArray.put(
                 JSONObject()
                     .put("id", route.id)
@@ -124,47 +204,83 @@ class CollectionExportRepository(
         )
     }
 
-    private fun writeCollectionCover(
-        zip: ZipOutputStream,
-        collection: CollectionEntity
-    ) {
-        copyFileEntry(
-            zip = zip,
+    private fun buildExportFiles(
+        collection: CollectionEntity,
+        routes: List<RouteEntity>,
+        routePhotos: Map<Long, List<RoutePhotoEntity>>
+    ): List<ExportFile> {
+        val result = mutableListOf<ExportFile>()
+
+        addFileIfAvailable(
+            result = result,
             sourcePath = collection.coverPhotoPath,
-            targetPath = "photos/collection/cover.jpg"
+            zipPath = "photos/collection/cover.jpg"
         )
 
-        copyFileEntry(
-            zip = zip,
+        addFileIfAvailable(
+            result = result,
             sourcePath = collection.coverThumbnailPath,
-            targetPath = "photos/collection/cover-thumbnail.webp"
+            zipPath = "photos/collection/cover-thumbnail.webp"
         )
+
+        for (route in routes) {
+            val photos = routePhotos[route.id].orEmpty()
+            val routeDirectory = "photos/route_${route.id}"
+
+            for (photo in photos) {
+                addFileIfAvailable(
+                    result = result,
+                    sourcePath = photo.filePath,
+                    zipPath = "$routeDirectory/photo_${photo.id}.jpg"
+                )
+
+                addFileIfAvailable(
+                    result = result,
+                    sourcePath = photo.thumbnailPath,
+                    zipPath =
+                        "$routeDirectory/photo_" +
+                                "${photo.id}-thumbnail.webp"
+                )
+            }
+        }
+
+        return result
     }
 
-    private fun writePhoto(
-        zip: ZipOutputStream,
-        route: RouteEntity,
-        photo: RoutePhotoEntity
+    private fun addFileIfAvailable(
+        result: MutableList<ExportFile>,
+        sourcePath: String?,
+        zipPath: String
     ) {
-        val folder = "photos/route_${route.number}"
+        if (sourcePath.isNullOrBlank()) {
+            return
+        }
 
-        val originalName =
-            "${folder}/photo_${photo.id}.jpg"
+        val sourceFile = File(sourcePath)
 
-        val thumbnailName =
-            "${folder}/photo_${photo.id}-thumbnail.webp"
+        if (sourceFile.exists() && sourceFile.isFile) {
+            result += ExportFile(
+                sourceFile = sourceFile,
+                zipPath = zipPath
+            )
+        }
+    }
 
-        copyFileEntry(
-            zip = zip,
-            sourcePath = photo.filePath,
-            targetPath = originalName
+    private fun copyFileToZip(
+        zip: ZipOutputStream,
+        exportFile: ExportFile
+    ) {
+        zip.putNextEntry(
+            ZipEntry(exportFile.zipPath)
         )
 
-        copyFileEntry(
-            zip = zip,
-            sourcePath = photo.thumbnailPath,
-            targetPath = thumbnailName
-        )
+        BufferedInputStream(
+            FileInputStream(exportFile.sourceFile)
+        ).use { input ->
+            input.copyTo(zip)
+        }
+
+        zip.closeEntry()
     }
 
     private fun writeTextEntry(
@@ -177,25 +293,8 @@ class CollectionExportRepository(
         zip.closeEntry()
     }
 
-    private fun copyFileEntry(
-        zip: ZipOutputStream,
-        sourcePath: String?,
-        targetPath: String
-    ) {
-        if (sourcePath.isNullOrBlank()) {
-            return
-        }
-
-        val sourceFile = File(sourcePath)
-
-        if (!sourceFile.exists()) {
-            return
-        }
-
-        zip.putNextEntry(ZipEntry(targetPath))
-        sourceFile.inputStream().use { input ->
-            input.copyTo(zip)
-        }
-        zip.closeEntry()
-    }
+    private data class ExportFile(
+        val sourceFile: File,
+        val zipPath: String
+    )
 }
