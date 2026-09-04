@@ -1460,10 +1460,9 @@ private fun CollectionRoutesScreen(
                             )
 
                             if (settings.hapticFeedbackEnabled) {
-                                haptic.performHapticFeedback(
-                                    HapticFeedbackType.LongPress
-                                )
+                                performSuccessHapticFeedback(context)
                             }
+
 
                             if (
                                 isNewManualSuccess &&
@@ -2601,6 +2600,26 @@ private fun formatDate(t: Long): String =
 private fun formatDateTime(t: Long): String =
     SimpleDateFormat("dd.MM.yyyy, HH:mm", Locale.getDefault())
         .format(Date(t))
+
+private fun performSuccessVibration(
+    context: Context
+) {
+    val vibratorManager =
+        context.getSystemService(
+            Context.VIBRATOR_MANAGER_SERVICE
+        ) as android.os.VibratorManager
+
+    val vibrator = vibratorManager.defaultVibrator
+
+    if (vibrator.hasVibrator()) {
+        vibrator.vibrate(
+            android.os.VibrationEffect.createOneShot(
+                70L,
+                android.os.VibrationEffect.DEFAULT_AMPLITUDE
+            )
+        )
+    }
+}
 
 private fun showDatePicker(
     context: Context,
