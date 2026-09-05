@@ -11,10 +11,15 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 
-private val urlPattern = Regex(
-    """https?://[^\s<>"']+"""
+private val markdownLinkPattern = Regex(
+    """\[([^\]]+)]\((https?://[^\s)]+)\)"""
+)
+
+private val directUrlPattern = Regex(
+    """https?://[^\s<>"')\]]+"""
 )
 
 @Composable
@@ -23,24 +28,26 @@ fun ClickableNotes(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-
     val annotatedNotes = buildAnnotatedNotes(notes)
 
     ClickableText(
         text = annotatedNotes,
         modifier = modifier,
         style = TextStyle(
-            fontSize = 14.sp,
-            color = Color.Unspecified
+            color = Color.Unspecified,
+            fontSize = 12.sp
         ),
         onClick = { offset ->
             val annotation = annotatedNotes
                 .getStringAnnotations(
                     tag = "URL",
-                    start = offset,
-                    end = offset
+                    start = 0,
+                    end = annotatedNotes.length
                 )
-                .firstOrNull()
+                .firstOrNull { currentAnnotation ->
+                    offset >= currentAnnotation.start &&
+                            offset < currentAnnotation.end
+                }
 
             if (annotation != null) {
                 val intent = Intent(
@@ -57,68 +64,128 @@ fun ClickableNotes(
 private fun buildAnnotatedNotes(
     notes: String
 ): AnnotatedString {
+    val markdownLinks = markdownLinkPattern
+        .findAll(notes)
+        .map { match ->
+            LinkMatch(
+                sourceStart = match.range.first,
+                sourceEndExclusive = match.range.last + 1,
+                visibleText = match.groupValues[1],
+                targetUrl = match.groupValues[2]
+            )
+        }
+        .toList()
+
+    val directLinks = directUrlPattern
+        .findAll(notes)
+        .filter { directMatch ->
+            markdownLinks.none { markdownLink ->
+                directMatch.range.first >= markdownLink.sourceStart &&
+                        directMatch.range.last <
+                        markdownLink.sourceEndExclusive
+            }
+        }
+        .map { match ->
+            val cleanedUrl = removeTrailingPunctuation(
+                match.value
+            )
+
+            LinkMatch(
+                sourceStart = match.range.first,
+                sourceEndExclusive = match.range.last + 1,
+                visibleText = cleanedUrl,
+                targetUrl = cleanedUrl
+            )
+        }
+        .toList()
+
+    val links = (
+            markdownLinks + directLinks
+            ).sortedBy {
+            it.sourceStart
+        }
+
     return AnnotatedString.Builder().apply {
-        var currentIndex = 0
+        var sourceIndex = 0
 
-        urlPattern.findAll(notes).forEach { match ->
-            val start = match.range.first
-            val endExclusive = match.range.last + 1
-
-            if (start > currentIndex) {
+        for (link in links) {
+            if (link.sourceStart > sourceIndex) {
                 append(
                     notes.substring(
-                        currentIndex,
-                        start
+                        sourceIndex,
+                        link.sourceStart
                     )
                 )
             }
 
-            val rawUrl = match.value
-            val trailingCharacters = rawUrl
-                .takeLastWhile {
-                    it == '.' ||
-                            it == ',' ||
-                            it == ';' ||
-                            it == ':' ||
-                            it == ')' ||
-                            it == ']'
-                }
-
-            val url = if (trailingCharacters.isEmpty()) {
-                rawUrl
-            } else {
-                rawUrl.dropLast(
-                    trailingCharacters.length
-                )
-            }
-
-            val urlStart = length
+            val visibleLinkStart = length
 
             withStyle(
                 style = SpanStyle(
                     color = Color(0xFF4A90E2),
-                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                    textDecoration = TextDecoration.Underline
                 )
             ) {
-                append(url)
+                append(link.visibleText)
             }
 
             addStringAnnotation(
                 tag = "URL",
-                annotation = url,
-                start = urlStart,
+                annotation = link.targetUrl,
+                start = visibleLinkStart,
                 end = length
             )
 
-            if (trailingCharacters.isNotEmpty()) {
-                append(trailingCharacters)
+            if (
+                link.visibleText !=
+                notes.substring(
+                    link.sourceStart,
+                    link.sourceEndExclusive
+                )
+            ) {
+                val sourceText = notes.substring(
+                    link.sourceStart,
+                    link.sourceEndExclusive
+                )
+
+                val trailingText =
+                    sourceText.removePrefix(
+                        "[${link.visibleText}](${link.targetUrl})"
+                    )
+
+                if (
+                    trailingText.isNotEmpty() &&
+                    !sourceText.startsWith("[")
+                ) {
+                    append(trailingText)
+                }
             }
 
-            currentIndex = endExclusive
+            sourceIndex = link.sourceEndExclusive
         }
 
-        if (currentIndex < notes.length) {
-            append(notes.substring(currentIndex))
+        if (sourceIndex < notes.length) {
+            append(notes.substring(sourceIndex))
         }
     }.toAnnotatedString()
 }
+
+private fun removeTrailingPunctuation(
+    url: String
+): String {
+    return url.trimEnd(
+        '.',
+        ',',
+        ';',
+        ':',
+        ')',
+        ']'
+    )
+}
+
+private data class LinkMatch(
+    val sourceStart: Int,
+    val sourceEndExclusive: Int,
+    val visibleText: String,
+    val targetUrl: String
+)
