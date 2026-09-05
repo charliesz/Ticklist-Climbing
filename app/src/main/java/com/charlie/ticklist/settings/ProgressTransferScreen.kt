@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -45,6 +47,7 @@ fun ProgressTransferScreen(
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
 
     val collections by collectionDao
         .observeAllCollections()
@@ -52,6 +55,17 @@ fun ProgressTransferScreen(
 
     val sourceCollection = collections.firstOrNull {
         it.id == sourceCollectionId
+    }
+
+    val targetCollections = collections.filter {
+        it.id != sourceCollectionId
+    }
+
+    val repository = remember {
+        ProgressTransferRepository(
+            collectionDao = collectionDao,
+            routeDao = routeDao
+        )
     }
 
     var targetCollection by remember {
@@ -72,23 +86,14 @@ fun ProgressTransferScreen(
         )
     }
 
-    val repository = remember {
-        ProgressTransferRepository(
-            collectionDao = collectionDao,
-            routeDao = routeDao
-        )
-    }
-
-    val targetCollections = collections.filter {
-        it.id != sourceCollectionId
-    }
-
     LaunchedEffect(targetCollections) {
+        val currentTarget = targetCollection
+
         if (
-            targetCollection == null &&
-            targetCollections.isNotEmpty()
+            currentTarget == null ||
+            currentTarget.id == sourceCollectionId
         ) {
-            targetCollection = targetCollections.first()
+            targetCollection = targetCollections.firstOrNull()
         }
     }
 
@@ -131,7 +136,8 @@ fun ProgressTransferScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             CollectionSelector(
