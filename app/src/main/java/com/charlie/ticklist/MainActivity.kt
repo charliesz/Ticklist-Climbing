@@ -1186,54 +1186,75 @@ private fun CollectionRoutesScreen(
     Scaffold(
         topBar = {
             Column(
-                Modifier
+                modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(12.dp)
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 8.dp
+                    )
             ) {
                 if (selectionMode) {
                     Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement =
-                            Arrangement.SpaceBetween,
-                        verticalAlignment =
-                            Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("${selected.size} ausgewählt")
-                        Row {
-                            TextButton(
-                                onClick = {
-                                    if (selected.isNotEmpty()) {
-                                        bulkStatusEnabled = false
-                                        bulkDateEnabled = false
-                                        bulkStatus = null
-                                        bulkDate = null
-                                        bulk = true
-                                    }
+                        TextButton(
+                            onClick = {
+                                selected = emptySet()
+                                selectionMode = false
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 4.dp,
+                                vertical = 2.dp
+                            )
+                        ) {
+                            Text("Zurück")
+                        }
+
+                        Text(
+                            text = "${selected.size} ausgewählt",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        TextButton(
+                            onClick = {
+                                if (selected.isNotEmpty()) {
+                                    bulkStatusEnabled = false
+                                    bulkDateEnabled = false
+                                    bulkStatus = null
+                                    bulkDate = null
+                                    bulk = true
                                 }
-                            ) {
-                                Text("Bearbeiten")
-                            }
-                            TextButton(
-                                onClick = {
-                                    selected = emptySet()
-                                    selectionMode = false
-                                }
-                            ) {
-                                Text("Fertig")
-                            }
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 4.dp,
+                                vertical = 2.dp
+                            )
+                        ) {
+                            Text("Bearbeiten")
                         }
                     }
                 } else {
                     Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement =
-                            Arrangement.SpaceBetween,
-                        verticalAlignment =
-                            Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        TextButton(
+                            onClick = onBack,
+                            contentPadding = PaddingValues(
+                                horizontal = 4.dp,
+                                vertical = 2.dp
+                            )
+                        ) {
+                            Text("Zurück")
+                        }
+
                         Column(
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp)
                         ) {
                             Text(
                                 text = collectionName,
@@ -1262,13 +1283,6 @@ private fun CollectionRoutesScreen(
                             }
                         )
 
-                        TextButton(
-                            onClick = onBack
-                        ) {
-                            Text("Sammlungen")
-                        }
-
-
                         Box {
                             IconButton(
                                 onClick = {
@@ -1276,7 +1290,7 @@ private fun CollectionRoutesScreen(
                                 }
                             ) {
                                 Icon(
-                                    Icons.Default.MoreVert,
+                                    imageVector = Icons.Default.MoreVert,
                                     contentDescription = "Menü"
                                 )
                             }
@@ -1305,11 +1319,12 @@ private fun CollectionRoutesScreen(
                                         menuExpanded = false
 
                                         exportLauncher.launch(
-                                            "${collectionName.toSafeFileName("ticklist")}.zip"
+                                            "${collectionName.toSafeFileName(
+                                                "ticklist"
+                                            )}.zip"
                                         )
                                     }
                                 )
-
 
                                 DropdownMenuItem(
                                     text = {
@@ -1325,25 +1340,12 @@ private fun CollectionRoutesScreen(
                     }
 
                     Row(
-                        horizontalArrangement =
-                            Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                selectionMode = true
-                                selected = emptySet()
-                            },
-                            contentPadding = PaddingValues(
-                                horizontal = 10.dp,
-                                vertical = 2.dp
-                            )
-                        ) {
-                            Text(
-                                "Bearbeiten",
-                                fontSize = 11.sp
-                            )
-                        }
-
                         Box {
                             OutlinedButton(
                                 onClick = {
@@ -1355,17 +1357,38 @@ private fun CollectionRoutesScreen(
                                 )
                             ) {
                                 Text(
-                                    "Filter",
+                                    text = "Filter",
                                     fontSize = 11.sp
                                 )
                             }
 
                             FilterMenu(
-                                filterOpen,
-                                filters,
-                                allFilters,
-                                { filterOpen = false }
-                            ) { filters = it }
+                                expanded = filterOpen,
+                                selectedFilters = filters,
+                                allFilters = allFilters,
+                                onDismiss = {
+                                    filterOpen = false
+                                },
+                                onChanged = {
+                                    filters = it
+                                }
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                selectionMode = true
+                                selected = emptySet()
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 10.dp,
+                                vertical = 2.dp
+                            )
+                        ) {
+                            Text(
+                                text = "Bearbeiten",
+                                fontSize = 11.sp
+                            )
                         }
                     }
                 }
