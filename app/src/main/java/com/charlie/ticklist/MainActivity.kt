@@ -109,6 +109,7 @@ import com.charlie.ticklist.ui.ExportProgressDialog
 import com.charlie.ticklist.ui.ImportProgressDialog
 import com.charlie.ticklist.data.CollectionImportRepository
 import com.charlie.ticklist.settings.ProgressTransferScreen
+import com.charlie.ticklist.ui.ClickableNotes
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -624,6 +625,15 @@ private fun CollectionsScreen(
                                         "$tops Top ($flashes Flash)",
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            if (!collection.notes.isNullOrBlank()) {
+                                ClickableNotes(
+                                    notes = collection.notes,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 6.dp)
+                                )
+                            }
+
                         }
                     }
                 }
