@@ -111,6 +111,14 @@ interface CollectionDao {
     @Query("SELECT COUNT(*) FROM collections")
     suspend fun countCollections(): Int
 
+    @Query("DELETE FROM collections")
+    suspend fun deleteAllCollections()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCollections(
+        collections: List<CollectionEntity>
+    )
+
 
     @Delete
     suspend fun deleteCollection(

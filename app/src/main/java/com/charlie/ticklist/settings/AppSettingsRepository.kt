@@ -8,6 +8,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlinx.coroutines.flow.first
+
+
 
 private val Context.appSettingsDataStore by preferencesDataStore(
     name = "app_settings"
@@ -146,6 +151,101 @@ class AppSettingsRepository(
     suspend fun resetManualSuccessCount() {
         context.appSettingsDataStore.edit { preferences ->
             preferences[Keys.manualSuccessCount] = 0
+        }
+    }
+    suspend fun readBackupSettings(): JSONObject {
+        val preferences = context
+            .appSettingsDataStore
+            .data
+            .first()
+
+        val remainingMessages =
+            preferences[Keys.remainingCelebrationMessages]
+                .orEmpty()
+
+        return JSONObject()
+            .put(
+                "hapticFeedbackEnabled",
+                preferences[Keys.hapticFeedbackEnabled] ?: true
+            )
+            .put(
+                "statusConfirmationDurationMs",
+                preferences[
+                    Keys.statusConfirmationDurationMs
+                ] ?: 1500
+            )
+            .put(
+                "darkModeEnabled",
+                preferences[Keys.darkModeEnabled] ?: false
+            )
+            .put(
+                "celebrationMessagesEnabled",
+                preferences[
+                    Keys.celebrationMessagesEnabled
+                ] ?: true
+            )
+            .put(
+                "manualSuccessCount",
+                preferences[Keys.manualSuccessCount] ?: 0
+            )
+            .put(
+                "remainingCelebrationMessages",
+                JSONArray(
+                    remainingMessages
+                        .split(messageSeparator)
+                        .filter { it.isNotBlank() }
+                )
+            )
+    }
+
+    suspend fun restoreBackupSettings(
+        json: JSONObject
+    ) {
+        context.appSettingsDataStore.edit { preferences ->
+            preferences[Keys.hapticFeedbackEnabled] =
+                json.optBoolean(
+                    "hapticFeedbackEnabled",
+                    true
+                )
+
+            preferences[Keys.statusConfirmationDurationMs] =
+                json.optInt(
+                    "statusConfirmationDurationMs",
+                    1500
+                ).coerceIn(1000, 3000)
+
+            preferences[Keys.darkModeEnabled] =
+                json.optBoolean(
+                    "darkModeEnabled",
+                    false
+                )
+
+            preferences[Keys.celebrationMessagesEnabled] =
+                json.optBoolean(
+                    "celebrationMessagesEnabled",
+                    true
+                )
+
+            preferences[Keys.manualSuccessCount] =
+                json.optInt(
+                    "manualSuccessCount",
+                    0
+                )
+
+            val messages = json
+                .optJSONArray("remainingCelebrationMessages")
+                ?: JSONArray()
+
+            val restoredMessages = buildList {
+                for (index in 0 until messages.length()) {
+                    messages.optString(index)
+                        .takeIf { it.isNotBlank() }
+                        ?.let(::add)
+                }
+            }
+
+            preferences[Keys.remainingCelebrationMessages] =
+                restoredMessages.joinToString(messageSeparator)
         }
     }
 

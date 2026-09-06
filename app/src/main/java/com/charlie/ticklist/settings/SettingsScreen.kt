@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -29,8 +31,12 @@ fun SettingsScreen(
     onHapticFeedbackChanged: (Boolean) -> Unit,
     onDurationChanged: (Int) -> Unit,
     onDarkModeChanged: (Boolean) -> Unit,
-    onCelebrationMessagesChanged: (Boolean) -> Unit
+    onCelebrationMessagesChanged: (Boolean) -> Unit,
+    onCreateFullBackup: () -> Unit,
+    onRestoreFullBackup: () -> Unit
 ) {
+    val scrollState = rememberScrollState()
+
     Scaffold(
         topBar = {
             Row(
@@ -43,7 +49,9 @@ fun SettingsScreen(
                     ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onBack) {
+                TextButton(
+                    onClick = onBack
+                ) {
                     Text("Zurück")
                 }
 
@@ -55,14 +63,18 @@ fun SettingsScreen(
             }
         }
     ) { innerPadding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -79,11 +91,12 @@ fun SettingsScreen(
                     )
 
                     Text(
-                        text = "Status-Bestätigungsdauer: ${
-                            formatDuration(
-                                settings.statusConfirmationDurationMs
-                            )
-                        }"
+                        text =
+                            "Status-Bestätigungsdauer: ${
+                                formatDuration(
+                                    settings.statusConfirmationDurationMs
+                                )
+                            }"
                     )
 
                     Slider(
@@ -103,7 +116,9 @@ fun SettingsScreen(
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -121,7 +136,9 @@ fun SettingsScreen(
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -132,15 +149,54 @@ fun SettingsScreen(
                     )
 
                     SettingsCheckboxRow(
-                        label = "Debug-Informationen bei Absturz sichern",
-                        checked = settings.celebrationMessagesEnabled,
+                        label =
+                            "Debug-Informationen bei Absturz sichern",
+                        checked =
+                            settings.celebrationMessagesEnabled,
                         onCheckedChange =
                             onCelebrationMessagesChanged
                     )
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Sicherung",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Text(
+                        text =
+                            "Sichert Sammlungen, Routen, Fortschritt, Fotos " +
+                                    "und Einstellungen in einer ZIP-Datei.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    TextButton(
+                        onClick = onCreateFullBackup,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Vollständiges Backup erstellen")
+                    }
+
+                    TextButton(
+                        onClick = onRestoreFullBackup,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Vollständiges Backup wiederherstellen")
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 TextButton(
                     onClick = onAboutClick,
                     modifier = Modifier.fillMaxWidth()

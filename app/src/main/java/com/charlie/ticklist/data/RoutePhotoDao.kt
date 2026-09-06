@@ -36,8 +36,16 @@ interface RoutePhotoDao {
     @Query(
         """
         SELECT * FROM route_photos
+        ORDER BY routeId ASC, createdAt ASC
+        """
+    )
+    suspend fun getAllPhotos(): List<RoutePhotoEntity>
+
+    @Query(
+        """
+        SELECT * FROM route_photos
         WHERE routeId = :routeId
-          AND isMainPhoto = 1
+        AND isMainPhoto = 1
         LIMIT 1
         """
     )
@@ -88,6 +96,9 @@ interface RoutePhotoDao {
     suspend fun deletePhotosForRoute(
         routeId: Long
     )
+
+    @Query("DELETE FROM route_photos")
+    suspend fun deleteAllPhotos()
 
     @Query(
         """

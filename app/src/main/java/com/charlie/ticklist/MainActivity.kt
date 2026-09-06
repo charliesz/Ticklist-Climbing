@@ -110,6 +110,10 @@ import com.charlie.ticklist.ui.ImportProgressDialog
 import com.charlie.ticklist.data.CollectionImportRepository
 import com.charlie.ticklist.settings.ProgressTransferScreen
 import com.charlie.ticklist.ui.ClickableNotes
+import com.charlie.ticklist.data.FullBackupRepository
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -163,6 +167,99 @@ private fun TicklistApp(
     var progressTransferSourceId by remember {
         mutableStateOf<Int?>(null)
     }
+    val context = LocalContext.current
+
+    val database = remember {
+        TicklistDatabase.getDatabase(context)
+    }
+
+    val fullBackupRepository = remember {
+        FullBackupRepository(
+            context = context,
+            database = database,
+            settingsRepository = settingsRepository
+        )
+    }
+
+    var fullBackupState by remember {
+        mutableStateOf<ExportState>(ExportState.Idle)
+    }
+
+    var fullRestoreState by remember {
+        mutableStateOf<ImportState>(ImportState.Idle)
+    }
+    val fullBackupLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument(
+                "application/zip"
+            )
+        ) { uri: Uri? ->
+            if (uri != null) {
+                scope.launch {
+                    fullBackupState = ExportState.Running(
+                        currentFile = 0,
+                        totalFiles = 0,
+                        currentName = "Backup wird vorbereitet"
+                    )
+
+                    fullBackupState = try {
+                        fullBackupRepository.exportFullBackup(
+                            destinationUri = uri,
+                            onProgress = { current, total, name ->
+                                fullBackupState = ExportState.Running(
+                                    currentFile = current,
+                                    totalFiles = total,
+                                    currentName = name
+                                )
+                            }
+                        )
+
+                        ExportState.Completed
+                    } catch (error: Exception) {
+                        ExportState.Failed(
+                            error.message
+                                ?: "Das Backup konnte nicht erstellt werden."
+                        )
+                    }
+                }
+            }
+        }
+    val fullRestoreLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument()
+        ) { uri: Uri? ->
+            if (uri != null) {
+                scope.launch {
+                    fullRestoreState = ImportState.Running(
+                        currentFile = 0,
+                        totalFiles = 0,
+                        currentName = "Wiederherstellung wird vorbereitet"
+                    )
+
+                    fullRestoreState = try {
+                        fullBackupRepository.restoreFullBackup(
+                            sourceUri = uri,
+                            onProgress = { current, total, name ->
+                                fullRestoreState = ImportState.Running(
+                                    currentFile = current,
+                                    totalFiles = total,
+                                    currentName = name
+                                )
+                            }
+                        )
+
+                        ImportState.Completed(
+                            collectionName = "Vollständiges Backup"
+                        )
+                    } catch (error: Exception) {
+                        ImportState.Failed(
+                            error.message
+                                ?: "Das Backup konnte nicht wiederhergestellt werden."
+                        )
+                    }
+                }
+            }
+        }
 
     when {
         showProgressTransfer && progressTransferSourceId != null -> {
@@ -233,6 +330,20 @@ private fun TicklistApp(
                         )
                     }
                 },
+                onCreateFullBackup = {
+                    fullBackupLauncher.launch(
+                        "ticklist_full_backup.zip"
+                    )
+                },
+                onRestoreFullBackup = {
+                    fullRestoreLauncher.launch(
+                        arrayOf(
+                            "application/zip",
+                            "application/octet-stream"
+                        )
+                    )
+                },
+
                 onCelebrationMessagesChanged = { enabled ->
                     scope.launch {
                         settingsRepository
@@ -279,6 +390,118 @@ private fun TicklistApp(
 
         }
     }
+    when (val state = fullBackupState) {
+        ExportState.Idle -> Unit
+
+        is ExportState.Running -> {
+            ExportProgressDialog(state = state)
+        }
+
+        ExportState.Completed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    fullBackupState = ExportState.Idle
+                },
+                title = {
+                    Text("Backup erstellt")
+                },
+                text = {
+                    Text(
+                        "Das vollständige Backup wurde erfolgreich gespeichert."
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            fullBackupState = ExportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        is ExportState.Failed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    fullBackupState = ExportState.Idle
+                },
+                title = {
+                    Text("Backup fehlgeschlagen")
+                },
+                text = {
+                    Text(state.message)
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            fullBackupState = ExportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+    }
+    when (val state = fullRestoreState) {
+        ImportState.Idle -> Unit
+
+        is ImportState.Running -> {
+            ImportProgressDialog(state = state)
+        }
+
+        is ImportState.Completed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    fullRestoreState = ImportState.Idle
+                },
+                title = {
+                    Text("Wiederherstellung abgeschlossen")
+                },
+                text = {
+                    Text(
+                        "Das vollständige Backup wurde erfolgreich " +
+                                "wiederhergestellt."
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            fullRestoreState = ImportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        is ImportState.Failed -> {
+            AlertDialog(
+                onDismissRequest = {
+                    fullRestoreState = ImportState.Idle
+                },
+                title = {
+                    Text("Wiederherstellung fehlgeschlagen")
+                },
+                text = {
+                    Text(state.message)
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            fullRestoreState = ImportState.Idle
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+    }
+
 }
 
 
@@ -1166,6 +1389,9 @@ private fun CollectionRoutesScreen(
     var photoViewerPhotos by remember {
         mutableStateOf<List<RoutePhotoEntity>>(emptyList())
     }
+    var deleteSelectedDialog by remember {
+        mutableStateOf(false)
+    }
 
     val shown = routes
         .filter { routeFilter(it.status) in filters }
@@ -1245,6 +1471,66 @@ private fun CollectionRoutesScreen(
                         ) {
                             Text("Bearbeiten")
                         }
+                        TextButton(
+                            onClick = {
+                                if (selected.isNotEmpty()) {
+                                    deleteSelectedDialog = true
+                                }
+                            },
+                            contentPadding = PaddingValues(
+                                horizontal = 4.dp,
+                                vertical = 2.dp
+                            )
+                        ) {
+                            Text("Löschen")
+                        }
+                        if (deleteSelectedDialog) {
+                            AlertDialog(
+                                onDismissRequest = {
+                                    deleteSelectedDialog = false
+                                },
+                                title = {
+                                    Text("Routen löschen?")
+                                },
+                                text = {
+                                    Text(
+                                        "Sollen ${selected.size} ausgewählte Routen " +
+                                                "einschließlich aller Fotos dauerhaft gelöscht werden?"
+                                    )
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                routes
+                                                    .filter { it.number in selected }
+                                                    .forEach { route ->
+                                                        photoRepository.deleteAllPhotos(route)
+                                                        routeDao.deleteRoute(route)
+                                                    }
+
+                                                selected = emptySet()
+                                                selectionMode = false
+                                                deleteSelectedDialog = false
+                                            }
+                                        }
+                                    ) {
+                                        Text("Endgültig löschen")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(
+                                        onClick = {
+                                            deleteSelectedDialog = false
+                                        }
+                                    ) {
+                                        Text("Abbrechen")
+                                    }
+                                }
+                            )
+                        }
+
+
                     }
                 } else {
                     Row(
@@ -1719,8 +2005,13 @@ private fun CollectionRoutesScreen(
                                 it.number == number
                             }?.let { route ->
                                 scope.launch {
+                                    photoRepository.deleteAllPhotos(route)
                                     routeDao.deleteRoute(route)
+
+                                    selected = selected - route.number
+                                    selectionMode = false
                                 }
+
                             }
                         }
                         delete = false
