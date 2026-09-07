@@ -261,12 +261,16 @@ private fun TicklistApp(
                             )
                         }
 
+                        // Nach erfolgreicher Wiederherstellung zur Sammlungsübersicht zurückkehren
+                        collectionId = null
+                        showSettings = false
+
                         ImportState.Completed(
                             collectionName = "Vollständiges Backup"
                         )
                     } catch (error: Exception) {
                         ImportState.Failed(
-                            error.message
+                            message = error.message
                                 ?: "Das Backup konnte nicht wiederhergestellt werden."
                         )
                     }
