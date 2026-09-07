@@ -113,9 +113,14 @@ class AppSettingsRepository(
         context.appSettingsDataStore.edit { preferences ->
             preferences[
                 Keys.statusConfirmationDurationMs
-            ] = durationMs.coerceIn(1000, 3000)
+            ] = durationMs
+                .coerceIn(0, 3000)
+                .let { value ->
+                    (value / 250) * 250
+                }
         }
     }
+
 
     suspend fun setDarkModeEnabled(
         enabled: Boolean
@@ -212,7 +217,12 @@ class AppSettingsRepository(
                 json.optInt(
                     "statusConfirmationDurationMs",
                     1500
-                ).coerceIn(1000, 3000)
+                )
+                    .coerceIn(0, 3000)
+                    .let { value ->
+                        (value / 250) * 250
+                    }
+
 
             preferences[Keys.darkModeEnabled] =
                 json.optBoolean(

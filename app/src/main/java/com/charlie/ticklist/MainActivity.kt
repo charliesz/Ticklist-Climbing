@@ -103,6 +103,7 @@ import com.charlie.ticklist.ui.CollectionCoverThumbnail
 import com.charlie.ticklist.data.CollectionExportRepository
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.wrapContentWidth
 import com.charlie.ticklist.data.ExportState
 import com.charlie.ticklist.data.ImportState
 import com.charlie.ticklist.ui.ExportProgressDialog
@@ -696,28 +697,41 @@ private fun CollectionsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 8.dp
+                    ),
+                verticalAlignment = Alignment.Top
             ) {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
                     Text(
                         text = "Meine Sammlungen",
-                        style = MaterialTheme.typography.headlineSmall
+                        style = MaterialTheme.typography.headlineSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
 
                     Text(
                         text = "Kurz tippen zum Öffnen, " +
                                 "lange drücken zum Bearbeiten",
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Box {
+                Box(
+                    modifier = Modifier.wrapContentWidth()
+                ) {
                     IconButton(
                         onClick = {
                             menuExpanded = true
-                        }
+                        },
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
@@ -748,7 +762,10 @@ private fun CollectionsScreen(
                             onClick = {
                                 menuExpanded = false
                                 importLauncher.launch(
-                                    arrayOf("application/zip", "application/octet-stream")
+                                    arrayOf(
+                                        "application/zip",
+                                        "application/octet-stream"
+                                    )
                                 )
                             }
                         )
@@ -756,6 +773,7 @@ private fun CollectionsScreen(
                 }
             }
         },
+
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
@@ -1366,6 +1384,9 @@ private fun CollectionRoutesScreen(
     var bulk by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var deleteSelectedDialog by remember {
+        mutableStateOf(false)
+    }
 
     var editingNumber by remember { mutableStateOf<Int?>(null) }
     var editName by remember { mutableStateOf("") }
@@ -1388,9 +1409,6 @@ private fun CollectionRoutesScreen(
     }
     var photoViewerPhotos by remember {
         mutableStateOf<List<RoutePhotoEntity>>(emptyList())
-    }
-    var deleteSelectedDialog by remember {
-        mutableStateOf(false)
     }
 
     val shown = routes
@@ -1471,65 +1489,6 @@ private fun CollectionRoutesScreen(
                         ) {
                             Text("Bearbeiten")
                         }
-                        TextButton(
-                            onClick = {
-                                if (selected.isNotEmpty()) {
-                                    deleteSelectedDialog = true
-                                }
-                            },
-                            contentPadding = PaddingValues(
-                                horizontal = 4.dp,
-                                vertical = 2.dp
-                            )
-                        ) {
-                            Text("Löschen")
-                        }
-                        if (deleteSelectedDialog) {
-                            AlertDialog(
-                                onDismissRequest = {
-                                    deleteSelectedDialog = false
-                                },
-                                title = {
-                                    Text("Routen löschen?")
-                                },
-                                text = {
-                                    Text(
-                                        "Sollen ${selected.size} ausgewählte Routen " +
-                                                "einschließlich aller Fotos dauerhaft gelöscht werden?"
-                                    )
-                                },
-                                confirmButton = {
-                                    Button(
-                                        onClick = {
-                                            scope.launch {
-                                                routes
-                                                    .filter { it.number in selected }
-                                                    .forEach { route ->
-                                                        photoRepository.deleteAllPhotos(route)
-                                                        routeDao.deleteRoute(route)
-                                                    }
-
-                                                selected = emptySet()
-                                                selectionMode = false
-                                                deleteSelectedDialog = false
-                                            }
-                                        }
-                                    ) {
-                                        Text("Endgültig löschen")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(
-                                        onClick = {
-                                            deleteSelectedDialog = false
-                                        }
-                                    ) {
-                                        Text("Abbrechen")
-                                    }
-                                }
-                            )
-                        }
-
 
                     }
                 } else {
@@ -1948,13 +1907,26 @@ private fun CollectionRoutesScreen(
             onStatusEnabledChanged = {
                 bulkStatusEnabled = it
             },
-            onStatusChanged = { bulkStatus = it },
-            onDateEnabledChanged = { bulkDateEnabled = it },
-            onDateChanged = { bulkDate = it },
-            onDismiss = { bulk = false },
+            onStatusChanged = {
+                bulkStatus = it
+            },
+            onDateEnabledChanged = {
+                bulkDateEnabled = it
+            },
+            onDateChanged = {
+                bulkDate = it
+            },
+            onDelete = {
+                bulk = false
+                deleteSelectedDialog = true
+            },
+            onDismiss = {
+                bulk = false
+            },
             onSave = {
                 scope.launch {
                     val now = System.currentTimeMillis()
+
                     routes
                         .filter { it.number in selected }
                         .forEach { route ->
@@ -1967,27 +1939,27 @@ private fun CollectionRoutesScreen(
                                 } else {
                                     route.status
                                 },
-                                statusChangedAt =
-                                    if (bulkStatusEnabled) {
-                                        now
-                                    } else {
-                                        route.statusChangedAt
-                                    },
-                                completedDate =
-                                    if (bulkDateEnabled) {
-                                        bulkDate
-                                    } else {
-                                        route.completedDate
-                                    },
+                                statusChangedAt = if (bulkStatusEnabled) {
+                                    now
+                                } else {
+                                    route.statusChangedAt
+                                },
+                                completedDate = if (bulkDateEnabled) {
+                                    bulkDate
+                                } else {
+                                    route.completedDate
+                                },
                                 collectionId = collectionId
                             )
                         }
+
                     selected = emptySet()
                     selectionMode = false
                     bulk = false
                 }
             }
         )
+
     }
 
     if (delete) {
@@ -2031,6 +2003,52 @@ private fun CollectionRoutesScreen(
             }
         )
     }
+    if (deleteSelectedDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                deleteSelectedDialog = false
+            },
+            title = {
+                Text("Routen löschen?")
+            },
+            text = {
+                Text(
+                    "Sollen ${selected.size} ausgewählte Routen " +
+                            "einschließlich aller Fotos dauerhaft gelöscht werden?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            routes
+                                .filter { it.number in selected }
+                                .forEach { route ->
+                                    photoRepository.deleteAllPhotos(route)
+                                    routeDao.deleteRoute(route)
+                                }
+
+                            selected = emptySet()
+                            selectionMode = false
+                            deleteSelectedDialog = false
+                        }
+                    }
+                ) {
+                    Text("Endgültig löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        deleteSelectedDialog = false
+                    }
+                ) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
     when (val state = exportState) {
         ExportState.Idle -> Unit
 
@@ -2340,6 +2358,7 @@ private fun BulkEditDialog(
     onStatusChanged: (RouteStatus?) -> Unit,
     onDateEnabledChanged: (Boolean) -> Unit,
     onDateChanged: (Long?) -> Unit,
+    onDelete: () -> Unit,
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
@@ -2422,6 +2441,13 @@ private fun BulkEditDialog(
                         }
                     }
                 }
+                TextButton(
+                    onClick = onDelete,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Ausgewählte Routen löschen")
+                }
+
             }
         },
         confirmButton = {
@@ -2558,13 +2584,21 @@ private fun RouteRow(
             .background(rowBackground)
     ) {
         Card(Modifier.fillMaxWidth()) {
-            Box(Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (rowProgress > 0f) {
+                    BorderProgress(
+                        progress = rowProgress,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 Row(
-                    Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
                         .padding(6.dp),
-                    verticalAlignment =
-                        Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (selectionMode) {
                         Checkbox(
@@ -2659,13 +2693,6 @@ private fun RouteRow(
                             }
                         )
                     }
-                }
-
-                if (rowProgress > 0f) {
-                    BorderProgress(
-                        rowProgress,
-                        MaterialTheme.colorScheme.primary
-                    )
                 }
             }
         }
@@ -2832,12 +2859,13 @@ private fun BorderProgress(
     color: Color
 ) {
     Canvas(
-        Modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(1.dp)
     ) {
         val stroke = 4.dp.toPx()
         val path = AndroidPath()
+
         path.addRoundRect(
             RectF(
                 stroke / 2f,
@@ -2852,6 +2880,7 @@ private fun BorderProgress(
 
         val measure = PathMeasure(path, false)
         val part = AndroidPath()
+
         measure.getSegment(
             0f,
             measure.length * progress.coerceIn(0f, 1f),
@@ -2866,11 +2895,12 @@ private fun BorderProgress(
             this.color = color.toArgb()
         }
 
-        drawIntoCanvas {
-            it.nativeCanvas.drawPath(part, paint)
+        drawIntoCanvas { canvas ->
+            canvas.nativeCanvas.drawPath(part, paint)
         }
     }
 }
+
 
 private fun routeFilter(
     status: String?

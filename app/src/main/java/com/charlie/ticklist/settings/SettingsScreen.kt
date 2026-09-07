@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+
 
 @Composable
 fun SettingsScreen(
@@ -101,18 +103,20 @@ fun SettingsScreen(
 
                     Slider(
                         value = settings.statusConfirmationDurationMs
-                            .toFloat(),
+                            .toFloat()
+                            .coerceIn(0f, 3000f),
                         onValueChange = { value ->
                             val roundedDuration =
                                 (value / 250f)
-                                    .toInt()
-                                    .coerceIn(4, 12) * 250
+                                    .roundToInt()
+                                    .coerceIn(0, 12) * 250
 
                             onDurationChanged(roundedDuration)
                         },
-                        valueRange = 1000f..3000f,
-                        steps = 7
+                        valueRange = 0f..3000f,
+                        steps = 11
                     )
+
                 }
             }
 
