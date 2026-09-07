@@ -95,6 +95,8 @@ interface CollectionDao {
         coverPhotoPath: String?,
         coverThumbnailPath: String?
     )
+    @Query("SELECT * FROM collections")
+    suspend fun getAllCollections(): List<CollectionEntity>
 
     @Query(
         """

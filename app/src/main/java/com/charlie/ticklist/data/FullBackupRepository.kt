@@ -23,6 +23,17 @@ class FullBackupRepository(
     private val database: TicklistDatabase,
     private val settingsRepository: AppSettingsRepository
 ) {
+    private fun cleanupBackupCache() {
+        context.cacheDir
+            .listFiles()
+            ?.filter { file ->
+                file.name.startsWith("ticklist_full_backup_") ||
+                        file.name.startsWith("ticklist_full_restore_")
+            }
+            ?.forEach { file ->
+                file.deleteRecursively()
+            }
+    }
 
     suspend fun exportFullBackup(
         destinationUri: Uri,
@@ -32,6 +43,7 @@ class FullBackupRepository(
             currentName: String
         ) -> Unit
     ) {
+        cleanupBackupCache()
         database.withTransaction {
             database.routeDao().deleteOrphanedRoutes()
             database.routePhotoDao().deleteOrphanedPhotos()
@@ -40,6 +52,21 @@ class FullBackupRepository(
         val collections = database
             .collectionDao()
             .observeAllCollectionsOnce()
+
+        val referencedCollectionPhotoPaths =
+            collections
+                .flatMap { collection ->
+                    listOfNotNull(
+                        collection.coverPhotoPath,
+                        collection.coverThumbnailPath
+                    )
+                }
+                .toSet()
+
+        CollectionPhotoStorage.deleteUnreferencedFiles(
+            context = context,
+            referencedPaths = referencedCollectionPhotoPaths
+        )
 
         val routes = collections.flatMap { collection ->
             database.routeDao().getRoutesForCollection(collection.id)
@@ -179,6 +206,7 @@ class FullBackupRepository(
             currentName: String
         ) -> Unit
     ) {
+        cleanupBackupCache()
         val temporaryDirectory = File(
             context.cacheDir,
             "ticklist_full_restore_${UUID.randomUUID()}"
@@ -246,16 +274,6 @@ class FullBackupRepository(
                 ).readText()
             )
 
-            val restoredCollections =
-                parseCollections(
-                    array = collectionsJson,
-                    temporaryDirectory = temporaryDirectory
-                )
-
-
-            val restoredRoutes =
-                parseRoutes(routesJson)
-
             File(
                 context.filesDir,
                 "route_photos"
@@ -266,11 +284,21 @@ class FullBackupRepository(
                 "collection_photos"
             ).deleteRecursively()
 
+            val restoredCollections =
+                parseCollections(
+                    array = collectionsJson,
+                    temporaryDirectory = temporaryDirectory
+                )
+
+            val restoredRoutes =
+                parseRoutes(routesJson)
+
             val restoredPhotos =
                 restorePhotoFiles(
                     temporaryDirectory = temporaryDirectory,
                     photosJson = photosJson
                 )
+
 
             database.withTransaction {
                 database.routePhotoDao().deleteAllPhotos()

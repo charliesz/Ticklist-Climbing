@@ -123,6 +123,51 @@ class RoutePhotoRepository(
                 }
             }
     }
+    suspend fun deleteUnreferencedRouteFiles() {
+        val referencedPhotos = photoDao.getAllPhotos()
+
+        val referencedPaths = referencedPhotos
+            .flatMap { photo ->
+                listOfNotNull(
+                    photo.filePath,
+                    photo.thumbnailPath
+                )
+            }
+            .map { path ->
+                File(path).canonicalPath
+            }
+            .toSet()
+
+        val routePhotosDirectory = File(
+            context.filesDir,
+            "route_photos"
+        )
+
+        if (!routePhotosDirectory.exists()) {
+            return
+        }
+
+        routePhotosDirectory
+            .walkTopDown()
+            .filter { it.isFile }
+            .forEach { file ->
+                if (file.canonicalPath !in referencedPaths) {
+                    file.delete()
+                }
+            }
+
+        routePhotosDirectory
+            .walkBottomUp()
+            .filter {
+                it.isDirectory &&
+                        it != routePhotosDirectory
+            }
+            .forEach { directory ->
+                if (directory.listFiles().isNullOrEmpty()) {
+                    directory.delete()
+                }
+            }
+    }
 
     suspend fun deleteAllPhotos(
         route: RouteEntity

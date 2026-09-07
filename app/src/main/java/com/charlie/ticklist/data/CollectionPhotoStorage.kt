@@ -79,7 +79,10 @@ object CollectionPhotoStorage {
             bounds
         )
 
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+        if (
+            bounds.outWidth <= 0 ||
+            bounds.outHeight <= 0
+        ) {
             return null
         }
 
@@ -91,10 +94,11 @@ object CollectionPhotoStorage {
             )
         }
 
-        val decodedBitmap = BitmapFactory.decodeFile(
-            original.absolutePath,
-            options
-        ) ?: return null
+        val decodedBitmap =
+            BitmapFactory.decodeFile(
+                original.absolutePath,
+                options
+            ) ?: return null
 
         val squareSize = min(
             decodedBitmap.width,
@@ -163,7 +167,6 @@ object CollectionPhotoStorage {
 
     /**
      * Löscht Originalbild und Thumbnail.
-     * Diese Überladung wird von MainActivity.kt verwendet.
      */
     fun deleteCoverPhoto(
         filePath: String?,
@@ -171,37 +174,42 @@ object CollectionPhotoStorage {
     ) {
         deleteFile(filePath)
         deleteFile(thumbnailPath)
+        deleteEmptyParentDirectories(filePath)
     }
 
     /**
-     * Alternative, sprechende Methode für das Löschen beider Dateien.
+     * Alternative, sprechende Methode zum Löschen
+     * von Originalbild und Thumbnail.
      */
     fun deleteCoverPhotoWithThumbnail(
         filePath: String?,
         thumbnailPath: String?
     ) {
-        deleteFile(filePath)
-        deleteFile(thumbnailPath)
+        deleteCoverPhoto(
+            filePath = filePath,
+            thumbnailPath = thumbnailPath
+        )
     }
 
     fun deleteCoverThumbnail(
         thumbnailPath: String?
     ) {
         deleteFile(thumbnailPath)
+        deleteEmptyParentDirectories(thumbnailPath)
     }
 
     fun coverPhotoExists(
         filePath: String?
     ): Boolean {
         return !filePath.isNullOrBlank() &&
-                File(filePath).exists()
+                File(filePath).isFile
     }
 
     fun coverThumbnailExists(
         thumbnailPath: String?
     ): Boolean {
         return !thumbnailPath.isNullOrBlank() &&
-                File(thumbnailPath).exists()
+                File(thumbnailPath).isFile
     }
 
     fun deleteAllPhotosForCollection(
@@ -218,6 +226,69 @@ object CollectionPhotoStorage {
         }
     }
 
+    /**
+     * Löscht alle Sammlungsbilder, die nicht mehr
+     * durch die Datenbank referenziert werden.
+     *
+     * Übergeben werden die aktuell verwendeten Pfade
+     * der Coverbilder und Thumbnails.
+     */
+    fun deleteUnreferencedFiles(
+        context: Context,
+        referencedPaths: Set<String>
+    ) {
+        val rootDirectory = File(
+            context.filesDir,
+            DIRECTORY_NAME
+        )
+
+        if (!rootDirectory.exists()) {
+            return
+        }
+
+        val canonicalReferencedPaths = referencedPaths
+            .filter { it.isNotBlank() }
+            .mapNotNull { path ->
+                runCatching {
+                    File(path).canonicalPath
+                }.getOrNull()
+            }
+            .toSet()
+
+        rootDirectory
+            .walkTopDown()
+            .filter { file ->
+                file.isFile
+            }
+            .forEach { file ->
+                val canonicalPath = runCatching {
+                    file.canonicalPath
+                }.getOrNull()
+
+                if (
+                    canonicalPath == null ||
+                    canonicalPath !in canonicalReferencedPaths
+                ) {
+                    file.delete()
+                }
+            }
+
+        rootDirectory
+            .walkBottomUp()
+            .filter { directory ->
+                directory.isDirectory &&
+                        directory != rootDirectory
+            }
+            .forEach { directory ->
+                if (
+                    directory.listFiles()
+                        .isNullOrEmpty()
+                ) {
+                    directory.delete()
+                }
+            }
+    }
+
     private fun collectionDirectory(
         context: Context,
         collectionId: Int
@@ -231,12 +302,36 @@ object CollectionPhotoStorage {
     private fun deleteFile(
         path: String?
     ) {
-        if (!path.isNullOrBlank()) {
-            val file = File(path)
+        if (path.isNullOrBlank()) {
+            return
+        }
 
-            if (file.exists()) {
-                file.delete()
-            }
+        val file = File(path)
+
+        if (file.exists()) {
+            file.delete()
+        }
+    }
+
+    private fun deleteEmptyParentDirectories(
+        path: String?
+    ) {
+        if (path.isNullOrBlank()) {
+            return
+        }
+
+        var directory = File(path).parentFile
+
+        while (
+            directory != null &&
+            directory.name != DIRECTORY_NAME &&
+            directory.exists() &&
+            directory.isDirectory &&
+            directory.listFiles().isNullOrEmpty()
+        ) {
+            val parent = directory.parentFile
+            directory.delete()
+            directory = parent
         }
     }
 
