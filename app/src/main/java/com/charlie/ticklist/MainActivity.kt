@@ -114,6 +114,9 @@ import com.charlie.ticklist.ui.ClickableNotes
 import com.charlie.ticklist.data.FullBackupRepository
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 
 
 
@@ -204,16 +207,20 @@ private fun TicklistApp(
                     )
 
                     fullBackupState = try {
-                        fullBackupRepository.exportFullBackup(
-                            destinationUri = uri,
-                            onProgress = { current, total, name ->
-                                fullBackupState = ExportState.Running(
-                                    currentFile = current,
-                                    totalFiles = total,
-                                    currentName = name
-                                )
-                            }
-                        )
+                        withContext(Dispatchers.IO) {
+                            fullBackupRepository.exportFullBackup(
+                                destinationUri = uri,
+                                onProgress = { current, total, name ->
+                                    withContext(Dispatchers.Main.immediate) {
+                                        fullBackupState = ExportState.Running(
+                                            currentFile = current,
+                                            totalFiles = total,
+                                            currentName = name
+                                        )
+                                    }
+                                }
+                            )
+                        }
 
                         ExportState.Completed
                     } catch (error: Exception) {
@@ -223,6 +230,7 @@ private fun TicklistApp(
                         )
                     }
                 }
+
             }
         }
     val fullRestoreLauncher =
@@ -238,16 +246,20 @@ private fun TicklistApp(
                     )
 
                     fullRestoreState = try {
-                        fullBackupRepository.restoreFullBackup(
-                            sourceUri = uri,
-                            onProgress = { current, total, name ->
-                                fullRestoreState = ImportState.Running(
-                                    currentFile = current,
-                                    totalFiles = total,
-                                    currentName = name
-                                )
-                            }
-                        )
+                        withContext(Dispatchers.IO) {
+                            fullBackupRepository.restoreFullBackup(
+                                sourceUri = uri,
+                                onProgress = { current, total, name ->
+                                    withContext(Dispatchers.Main.immediate) {
+                                        fullRestoreState = ImportState.Running(
+                                            currentFile = current,
+                                            totalFiles = total,
+                                            currentName = name
+                                        )
+                                    }
+                                }
+                            )
+                        }
 
                         ImportState.Completed(
                             collectionName = "Vollständiges Backup"
@@ -546,17 +558,20 @@ private fun CollectionsScreen(
                     )
 
                     try {
-                        val importedName =
+                        val importedName = withContext(Dispatchers.IO) {
                             importRepository.importAsNewCollection(
                                 sourceUri = uri,
                                 onProgress = { current, total, name ->
-                                    importState = ImportState.Running(
-                                        currentFile = current,
-                                        totalFiles = total,
-                                        currentName = name
-                                    )
+                                    withContext(Dispatchers.Main.immediate) {
+                                        importState = ImportState.Running(
+                                            currentFile = current,
+                                            totalFiles = total,
+                                            currentName = name
+                                        )
+                                    }
                                 }
                             )
+                        }
 
                         importState = ImportState.Completed(
                             collectionName = importedName
@@ -568,6 +583,7 @@ private fun CollectionsScreen(
                         )
                     }
                 }
+
             }
         }
 
@@ -1291,23 +1307,31 @@ private fun CollectionRoutesScreen(
                     )
 
                     try {
-                        exportRepository.exportCollection(
-                            collectionId = collectionId,
-                            destinationUri = uri,
-                            onProgress = { current, total, name ->
-                                exportState = ExportState.Running(
-                                    currentFile = current,
-                                    totalFiles = total,
-                                    currentName = name
-                                )
-                            }
-                        )
+                        withContext(Dispatchers.IO) {
+                            exportRepository.exportCollection(
+                                collectionId = collectionId,
+                                destinationUri = uri,
+                                onProgress = { current, total, name ->
+                                    withContext(
+                                        Dispatchers.Main.immediate
+                                    ) {
+                                        exportState =
+                                            ExportState.Running(
+                                                currentFile = current,
+                                                totalFiles = total,
+                                                currentName = name
+                                            )
+                                    }
+                                }
+                            )
+                        }
 
                         exportState = ExportState.Completed
                     } catch (error: Exception) {
                         exportState = ExportState.Failed(
-                            message = error.message
-                                ?: "Der Export ist fehlgeschlagen."
+                            message =
+                                error.message
+                                    ?: "Der Export ist fehlgeschlagen."
                         )
                     }
                 }
@@ -1320,7 +1344,8 @@ private fun CollectionRoutesScreen(
 
 
 
-    var celebrationMessage by remember {
+
+            var celebrationMessage by remember {
         mutableStateOf<String?>(null)
     }
 

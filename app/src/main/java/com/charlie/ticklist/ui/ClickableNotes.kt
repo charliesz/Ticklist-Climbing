@@ -3,6 +3,9 @@ package com.charlie.ticklist.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,7 +28,9 @@ private val directUrlPattern = Regex(
 @Composable
 fun ClickableNotes(
     notes: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    style: TextStyle = LocalTextStyle.current,
+    color: Color = LocalContentColor.current
 ) {
     val context = LocalContext.current
     val annotatedNotes = buildAnnotatedNotes(notes)
@@ -33,9 +38,8 @@ fun ClickableNotes(
     ClickableText(
         text = annotatedNotes,
         modifier = modifier,
-        style = TextStyle(
-            color = Color.Unspecified,
-            fontSize = 12.sp
+        style = style.copy(
+            color = color
         ),
         onClick = { offset ->
             val annotation = annotatedNotes
@@ -44,9 +48,8 @@ fun ClickableNotes(
                     start = 0,
                     end = annotatedNotes.length
                 )
-                .firstOrNull { currentAnnotation ->
-                    offset >= currentAnnotation.start &&
-                            offset < currentAnnotation.end
+                .firstOrNull {
+                    offset >= it.start && offset < it.end
                 }
 
             if (annotation != null) {
@@ -60,6 +63,7 @@ fun ClickableNotes(
         }
     )
 }
+
 
 private fun buildAnnotatedNotes(
     notes: String

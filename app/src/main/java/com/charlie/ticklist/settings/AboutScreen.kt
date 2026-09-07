@@ -100,7 +100,7 @@ fun AboutScreen(
                     )
 
                     Text(
-                        text = "Offline Climbing and Bouldering Tracker",
+                        text = "Offline Climbing and Bouldering Ticklist",
                         style = MaterialTheme.typography.bodyLarge
                     )
 
@@ -138,9 +138,11 @@ fun AboutScreen(
                         Text("GitHub öffnen")
                     }
 
-                    TextButton(
+                    Button(
                         onClick = {
-                            openUrl(RELEASES_URL)
+                            openUrl(
+                                "https://github.com/charliesz/Ticklist-Climbing/releases"
+                            )
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -181,8 +183,9 @@ fun AboutScreen(
                     )
 
                     Text(
-                        text = "Dank an Matze und Lotti " +
-                                "fürs Testen",
+                        text = "Danke an Matze und Lotti " +
+                                "fürs Testen.\n" +
+                                "Danke an Cato für Alles!",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
