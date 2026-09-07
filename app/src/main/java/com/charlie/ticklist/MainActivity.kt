@@ -1391,6 +1391,10 @@ private fun CollectionRoutesScreen(
     var editingNumber by remember { mutableStateOf<Int?>(null) }
     var editName by remember { mutableStateOf("") }
     var editDifficulty by remember { mutableStateOf("") }
+    var editNotes by remember {
+        mutableStateOf("")
+    }
+
     var editStatus by remember {
         mutableStateOf<RouteStatus?>(null)
     }
@@ -1430,6 +1434,7 @@ private fun CollectionRoutesScreen(
             editingNumber = current.number
             editName = current.name
             editDifficulty = current.difficulty
+            editNotes = current.notes.orEmpty()
             editStatus = current.status.toRouteStatus()
             editStatusAt = current.statusChangedAt
             editCompleted = current.completedDate
@@ -1664,6 +1669,7 @@ private fun CollectionRoutesScreen(
                     editName = ""
                     editDifficulty = ""
                     editStatus = null
+                    editNotes = ""
                     editStatusAt = null
                     editCompleted = null
                     dialog = true
@@ -1734,6 +1740,7 @@ private fun CollectionRoutesScreen(
                                     } else {
                                         null
                                     },
+                                notes = route.notes,
                                 collectionId = collectionId
                             )
 
@@ -1825,11 +1832,15 @@ private fun CollectionRoutesScreen(
             },
             name = editName,
             difficulty = editDifficulty,
+            notes = editNotes,
             status = editStatus,
             statusChangedAt = editStatusAt,
             completedDate = editCompleted,
             onNameChanged = { editName = it },
             onDifficultyChanged = { editDifficulty = it },
+            onNotesChanged = {
+                editNotes = it
+            },
             onStatusChanged = { editStatus = it },
             onCompletedDateChanged = { editCompleted = it },
             onDelete = if (editingNumber != null) {
@@ -1845,12 +1856,16 @@ private fun CollectionRoutesScreen(
                 if (editName.isNotBlank()) {
                     scope.launch {
                         val now = System.currentTimeMillis()
+
                         val old = routes.firstOrNull {
                             it.number == editingNumber
                         }
+
                         val savedStatusAt =
                             old?.statusChangedAt
-                                ?: editStatusAt ?: now
+                                ?: editStatusAt
+                                ?: now
+
                         val savedCompleted =
                             if (
                                 editStatus == RouteStatus.TOP ||
@@ -1864,14 +1879,16 @@ private fun CollectionRoutesScreen(
                         if (editingNumber == null) {
                             routeDao.insertRoute(
                                 RouteEntity(
-                                    number = (
-                                            routes.maxOfOrNull {
-                                                it.number
-                                            }?.plus(1) ?: 1
-                                            ),
+                                    number =
+                                        routes.maxOfOrNull {
+                                            it.number
+                                        }?.plus(1) ?: 1,
                                     name = editName,
                                     difficulty = editDifficulty,
                                     status = editStatus?.name,
+                                    notes = editNotes.ifBlank {
+                                        null
+                                    },
                                     statusChangedAt = savedStatusAt,
                                     completedDate = savedCompleted,
                                     collectionId = collectionId
@@ -1883,16 +1900,21 @@ private fun CollectionRoutesScreen(
                                 name = editName,
                                 difficulty = editDifficulty,
                                 status = editStatus?.name,
+                                notes = editNotes.ifBlank {
+                                    null
+                                },
                                 statusChangedAt = savedStatusAt,
                                 completedDate = savedCompleted,
                                 collectionId = collectionId
                             )
                         }
+
                         dialog = false
                         editingNumber = null
                     }
                 }
             }
+
         )
     }
 
@@ -1934,6 +1956,7 @@ private fun CollectionRoutesScreen(
                                 number = route.number,
                                 name = route.name,
                                 difficulty = route.difficulty,
+                                notes = route.notes,
                                 status = if (bulkStatusEnabled) {
                                     bulkStatus?.name
                                 } else {
@@ -2187,17 +2210,20 @@ private fun SingleRouteDialog(
     title: String,
     name: String,
     difficulty: String,
+    notes: String,
     status: RouteStatus?,
     statusChangedAt: Long?,
     completedDate: Long?,
     onNameChanged: (String) -> Unit,
     onDifficultyChanged: (String) -> Unit,
+    onNotesChanged: (String) -> Unit,
     onStatusChanged: (RouteStatus?) -> Unit,
     onCompletedDateChanged: (Long?) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -2220,7 +2246,16 @@ private fun SingleRouteDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = onNotesChanged,
+                    label = {
+                        Text("Notizen")
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 6
+                )
                 if (route != null) {
                     RoutePhotoEditor(
                         route = route,

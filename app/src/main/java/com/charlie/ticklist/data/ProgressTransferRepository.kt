@@ -115,6 +115,7 @@ class ProgressTransferRepository(
                 name = targetRoute.name,
                 difficulty = targetRoute.difficulty,
                 status = sourceRoute.status,
+                notes = targetRoute.notes,
                 statusChangedAt = sourceRoute.statusChangedAt,
                 completedDate = sourceRoute.completedDate,
                 collectionId = targetCollectionId

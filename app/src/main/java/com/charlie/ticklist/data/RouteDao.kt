@@ -72,6 +72,7 @@ interface RouteDao {
             status = :status,
             statusChangedAt = :statusChangedAt,
             completedDate = :completedDate,
+            notes = :notes,
             collectionId = :collectionId
         WHERE number = :number
           AND collectionId = :collectionId
@@ -84,6 +85,7 @@ interface RouteDao {
         status: String?,
         statusChangedAt: Long?,
         completedDate: Long?,
+        notes: String?,
         collectionId: Int
     )
 
