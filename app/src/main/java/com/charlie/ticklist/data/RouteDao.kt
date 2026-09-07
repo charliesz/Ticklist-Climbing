@@ -103,6 +103,15 @@ interface RouteDao {
     suspend fun deleteRoute(
         route: RouteEntity
     )
+    @Query(
+        """
+    DELETE FROM routes
+    WHERE collectionId NOT IN (
+        SELECT id FROM collections
+    )
+    """
+    )
+    suspend fun deleteOrphanedRoutes()
 
     @Query("DELETE FROM routes")
     suspend fun deleteAllRoutes()

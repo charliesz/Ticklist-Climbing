@@ -102,6 +102,17 @@ interface RoutePhotoDao {
 
     @Query(
         """
+    DELETE FROM route_photos
+    WHERE routeId NOT IN (
+        SELECT id FROM routes
+    )
+    """
+    )
+    suspend fun deleteOrphanedPhotos()
+
+
+    @Query(
+        """
         UPDATE route_photos
         SET isMainPhoto = 0
         WHERE routeId = :routeId

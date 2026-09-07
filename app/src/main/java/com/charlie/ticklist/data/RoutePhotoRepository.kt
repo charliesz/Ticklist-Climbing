@@ -2,6 +2,8 @@ package com.charlie.ticklist.data
 
 import android.content.Context
 import android.net.Uri
+import java.io.File
+
 
 class RoutePhotoRepository(
     private val context: Context,
@@ -83,6 +85,43 @@ class RoutePhotoRepository(
         PhotoStorage.deleteThumbnail(
             photo.thumbnailPath
         )
+    }
+    suspend fun deleteOrphanedPhotoFiles() {
+        val referencedPhotos = photoDao.getAllPhotos()
+
+        val referencedPaths = referencedPhotos
+            .flatMap { photo ->
+                listOfNotNull(
+                    photo.filePath,
+                    photo.thumbnailPath
+                )
+            }
+            .map { path ->
+                File(path).canonicalPath
+            }
+            .toSet()
+
+        val routePhotosDirectory = File(
+            context.filesDir,
+            "route_photos"
+        )
+
+        if (!routePhotosDirectory.exists()) {
+            if (routePhotosDirectory.exists()) {
+                routePhotosDirectory.deleteRecursively()
+            }
+        }
+
+        routePhotosDirectory
+            .walkTopDown()
+            .filter { file ->
+                file.isFile
+            }
+            .forEach { file ->
+                if (file.canonicalPath !in referencedPaths) {
+                    file.delete()
+                }
+            }
     }
 
     suspend fun deleteAllPhotos(

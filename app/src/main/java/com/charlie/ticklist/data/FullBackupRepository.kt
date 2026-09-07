@@ -16,6 +16,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+
+
 class FullBackupRepository(
     private val context: Context,
     private val database: TicklistDatabase,
@@ -30,6 +32,11 @@ class FullBackupRepository(
             currentName: String
         ) -> Unit
     ) {
+        database.withTransaction {
+            database.routeDao().deleteOrphanedRoutes()
+            database.routePhotoDao().deleteOrphanedPhotos()
+        }
+
         val collections = database
             .collectionDao()
             .observeAllCollectionsOnce()
@@ -38,9 +45,22 @@ class FullBackupRepository(
             database.routeDao().getRoutesForCollection(collection.id)
         }
 
+        val exportedRouteIds = routes
+            .map { it.id }
+            .toSet()
+
         val photos = database
             .routePhotoDao()
             .getAllPhotos()
+            .filter { photo ->
+                photo.routeId in exportedRouteIds &&
+                        File(photo.filePath).exists()
+            }
+
+        deleteUnreferencedRouteFiles(
+            photos = photos
+        )
+
 
         val settings = settingsRepository
             .readBackupSettings()
@@ -236,6 +256,16 @@ class FullBackupRepository(
             val restoredRoutes =
                 parseRoutes(routesJson)
 
+            File(
+                context.filesDir,
+                "route_photos"
+            ).deleteRecursively()
+
+            File(
+                context.filesDir,
+                "collection_photos"
+            ).deleteRecursively()
+
             val restoredPhotos =
                 restorePhotoFiles(
                     temporaryDirectory = temporaryDirectory,
@@ -284,6 +314,53 @@ class FullBackupRepository(
             path = "manifest.json",
             content = manifest.toString(2)
         )
+    }
+    private fun deleteUnreferencedRouteFiles(
+        photos: List<RoutePhotoEntity>
+    ) {
+        val referencedFiles = photos
+            .flatMap { photo ->
+                listOfNotNull(
+                    photo.filePath,
+                    photo.thumbnailPath
+                )
+            }
+            .map { path ->
+                File(path).canonicalPath
+            }
+            .toSet()
+
+        val routePhotosDirectory = File(
+            context.filesDir,
+            "route_photos"
+        )
+
+        if (!routePhotosDirectory.exists()) {
+            return
+        }
+
+        routePhotosDirectory
+            .walkTopDown()
+            .filter { file ->
+                file.isFile
+            }
+            .forEach { file ->
+                if (file.canonicalPath !in referencedFiles) {
+                    file.delete()
+                }
+            }
+
+        routePhotosDirectory
+            .walkBottomUp()
+            .filter { directory ->
+                directory.isDirectory &&
+                        directory != routePhotosDirectory
+            }
+            .forEach { directory ->
+                if (directory.listFiles().isNullOrEmpty()) {
+                    directory.delete()
+                }
+            }
     }
 
     private fun writeCollections(
