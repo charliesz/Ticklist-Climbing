@@ -50,6 +50,8 @@ The app displays `Competition results` as a clickable link.
 - Top
 - Flash
 - Protected status changes using a configurable long press
+- Configurable status-confirmation duration from 0 to 3 seconds
+- Status-confirmation intervals of 0.25 seconds
 - Haptic feedback after successful status changes
 - Haptic feedback can be enabled or disabled in the settings
 - Stored status-entry date
@@ -119,6 +121,7 @@ The app displays `Competition results` as a clickable link.
 - Clear completion dates for multiple routes
 - Transfer progress between collections
 - Copy selected routes into a separate collection, including route information and progress
+- Delete selected routes from the edit dialog
 
 ### Calculation Bar
 
@@ -145,7 +148,9 @@ The app provides a settings area accessible through the menu:
 - Haptic feedback on/off
 - Configurable status-confirmation duration
 - Light or dark appearance
-- Motivational feedback on/off via "Debug-Info" on/off
+- Motivational feedback on/off via the `Debug-Info` setting
+- Full backup creation
+- Full backup restoration
 - About Ticklist Climbing page
 - Installed app version
 - Link to the GitHub repository
@@ -200,7 +205,9 @@ collection.zip
         └── photo_<photo-id>-thumbnail.webp
 ```
 
-The ZIP export is first created locally and copied to the selected destination only after the archive has been fully closed. This prevents incomplete archives during large exports.
+The ZIP export is created locally first and copied to the selected destination only after the archive has been fully closed. This prevents incomplete archives during large exports.
+
+Collection export operations run in the background so that the user interface remains responsive during large exports.
 
 ### Collection Import
 
@@ -214,7 +221,7 @@ Münster United 2026_import
 Münster United 2026_import_2
 ```
 
-The import does not overwrite existing collections or personal progress.
+The import does not overwrite existing collections.
 
 The import includes:
 
@@ -227,6 +234,70 @@ The import includes:
 - Route thumbnails
 
 Personal progress is not imported automatically.
+
+Collection import operations run in the background so that the user interface remains responsive during large imports.
+
+### Full Backup
+
+The app supports complete backup and restore functionality.
+
+A full backup contains:
+
+- All collections
+- Collection notes
+- Collection cover photos and thumbnails
+- All routes
+- Route notes
+- Route status and progress
+- Status-entry dates
+- Completion dates
+- Route photos
+- Route thumbnails
+- Application settings
+
+Example structure:
+
+```text
+ticklist-full-backup.zip
+├── manifest.json
+├── collections.json
+├── routes.json
+├── route_photos.json
+├── app_settings.json
+└── photos/
+    ├── collections/
+    │   └── <collection-id>/
+    │       ├── cover.jpg
+    │       └── cover-thumbnail.webp
+    └── routes/
+        └── <route-id>/
+            ├── photo_<photo-id>.jpg
+            └── photo_<photo-id>-thumbnail.webp
+```
+
+Full backup export and restore operations run in the background.
+
+A full backup should be created before:
+
+- uninstalling the app
+- changing devices
+- resetting the device
+- performing major app updates
+
+### Full Backup Restore
+
+A full backup can be selected through the Android file picker and restored locally.
+
+The restore process validates the backup manifest and restores:
+
+- collections
+- routes
+- progress
+- photos
+- thumbnails
+- application settings
+
+The current local data is replaced during a full restore. Create a current full backup before restoring another backup if the existing data needs to be preserved.
 
 ### Progress Transfer
 
@@ -250,7 +321,7 @@ Photos, notes, route names and difficulties in the target collection remain unch
 
 ### Test Database
 
-A test database export is attached to the GitHub release v0.10 for testing the import functionality.
+A test database export is attached to the GitHub release `v0.10` for testing the import functionality.
 
 The test export contains:
 
@@ -321,15 +392,6 @@ This structure allows multiple collections to contain the same visible route num
 - Attempt tracking
 - Lead-climbing-specific calculations
 
-### Full Backup
-
-- Export all collections
-- Export all routes and progress
-- Export all photos and thumbnails
-- Export app settings
-- Restore a complete backup
-- Restore as new collections or update existing collections
-
 ### Competition Features
 
 - Competition-specific collections
@@ -362,9 +424,9 @@ This structure allows multiple collections to contain the same visible route num
 
 ## Project Status
 
-Ticklist Climbing is in active early development.
+Ticklist Climbing `v1.00` is the first stable release.
 
-The current development version includes:
+The current release includes:
 
 1. Offline Room database
 2. Multiple collections
@@ -379,21 +441,24 @@ The current development version includes:
 11. Zoomable photo viewer
 12. Collection ZIP export
 13. Collection ZIP import
-14. Settings and DataStore
-15. Theme selection
-16. Haptic feedback settings
-17. Motivational feedback
-18. About page with installed version and GitHub links
+14. Full backup export
+15. Full backup restore
+16. Settings and DataStore
+17. Theme selection
+18. Haptic feedback settings
+19. Motivational feedback
+20. Route and collection notes
+21. About page with installed version and GitHub links
+22. Background processing for import, export and backup operations
 
 ### Known Limitations
 
-- Full backup restore is not implemented yet.
-- QR-code progress sharing is not implemented yet.
-- Competition participant management is not implemented yet.
-- Lead-climbing-specific workflows are not complete.
-- Photo crop editing is not implemented yet.
-- Update checking is not implemented yet.
-- Released APKs are currently debug builds for testing.
+- QR-code progress sharing is not implemented yet
+- Competition participant management is not implemented yet
+- Lead-climbing-specific workflows are not complete
+- Photo crop editing is not implemented yet
+- Update checking is not implemented yet
+- Released APKs are currently debug builds for testing
 
 ## Contributing
 
