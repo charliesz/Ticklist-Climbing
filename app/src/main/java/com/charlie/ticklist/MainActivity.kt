@@ -2579,125 +2579,123 @@ private fun RouteRow(
         }
 
     Box(
-        Modifier
+        modifier = Modifier
             .fillMaxWidth()
             .background(rowBackground)
     ) {
-        Card(Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier.fillMaxWidth()
+        if (rowProgress > 0f) {
+            BorderProgress(
+                progress = rowProgress,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.matchParentSize()
+            )
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (rowProgress > 0f) {
-                    BorderProgress(
-                        progress = rowProgress,
-                        color = MaterialTheme.colorScheme.primary
+                if (selectionMode) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = {
+                            onSelectedChange()
+                        }
                     )
                 }
 
-                Row(
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (selectionMode) {
-                        Checkbox(
-                            checked = selected,
-                            onCheckedChange = {
-                                onSelectedChange()
-                            }
-                        )
-                    }
-
-                    Column(
-                        Modifier
-                            .width(28.dp)
-                            .padding(end = 2.dp)
-                            .pointerInput(
-                                route.id,
-                                selectionMode
-                            ) {
-                                detectTapGestures(
-                                    onTap = {
-                                        if (selectionMode) {
-                                            onSelectedChange()
-                                        }
-                                    },
-                                    onLongPress = {
-                                        if (!selectionMode) {
-                                            onEdit()
-                                        }
+                        .width(28.dp)
+                        .padding(end = 2.dp)
+                        .pointerInput(
+                            route.id,
+                            selectionMode
+                        ) {
+                            detectTapGestures(
+                                onTap = {
+                                    if (selectionMode) {
+                                        onSelectedChange()
                                     }
-                                )
-                            }
-                    ) {
-                        Text(
-                            route.name,
-                            style =
-                                MaterialTheme.typography
-                                    .titleSmall,
-                            maxLines = 1,
-                            overflow =
-                                TextOverflow.Ellipsis
-                        )
-                        if (route.difficulty.isNotBlank()) {
-                            Text(
-                                route.difficulty,
-                                style =
-                                    MaterialTheme.typography
-                                        .bodySmall,
-                                maxLines = 1,
-                                overflow =
-                                    TextOverflow.Ellipsis
+                                },
+                                onLongPress = {
+                                    if (!selectionMode) {
+                                        onEdit()
+                                    }
+                                }
                             )
                         }
-                    }
+                ) {
+                    Text(
+                        text = route.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
 
-                    if (mainPhoto != null) {
-                        RouteRowThumbnail(
-                            photo = mainPhoto,
-                            onClick = {
-                                onPhotoClick(mainPhoto)
-                            },
-                            onLongClick = { onEdit() }
-                        )
-                    } else {
-                        RoutePhotoPlaceholder(
-                            onClick = {},
-                            onLongClick = { onEdit() }
-                        )
-                    }
-
-                    Spacer(Modifier.width(10.dp))
-
-                    listOf(
-                        "Flash" to RouteStatus.FLASH,
-                        "Top" to RouteStatus.TOP,
-                        "Zone" to RouteStatus.ZONE,
-                        "Projekt" to RouteStatus.PROJECT
-                    ).forEach { (label, routeStatus) ->
-                        StatusButton(
-                            label = label,
-                            selected =
-                                route.status == routeStatus.name,
-                            modifier = Modifier.weight(1f),
-                            durationMs =
-                                settings
-                                    .statusConfirmationDurationMs,
-                            onProgress = {
-                                rowProgress = it
-                            },
-                            onComplete = {
-                                rowProgress = 0f
-                                onStatusChange(routeStatus)
-                            }
+                    if (route.difficulty.isNotBlank()) {
+                        Text(
+                            text = route.difficulty,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
+                }
+
+                if (mainPhoto != null) {
+                    RouteRowThumbnail(
+                        photo = mainPhoto,
+                        onClick = {
+                            onPhotoClick(mainPhoto)
+                        },
+                        onLongClick = {
+                            onEdit()
+                        }
+                    )
+                } else {
+                    RoutePhotoPlaceholder(
+                        onClick = {},
+                        onLongClick = {
+                            onEdit()
+                        }
+                    )
+                }
+
+                Spacer(Modifier.width(10.dp))
+
+                listOf(
+                    "Flash" to RouteStatus.FLASH,
+                    "Top" to RouteStatus.TOP,
+                    "Zone" to RouteStatus.ZONE,
+                    "Projekt" to RouteStatus.PROJECT
+                ).forEach { (label, routeStatus) ->
+                    StatusButton(
+                        label = label,
+                        selected = route.status == routeStatus.name,
+                        modifier = Modifier.weight(1f),
+                        durationMs = settings.statusConfirmationDurationMs,
+                        onProgress = {
+                            rowProgress = it
+                        },
+                        onComplete = {
+                            rowProgress = 0f
+                            onStatusChange(routeStatus)
+                        }
+                    )
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun RouteRowThumbnail(
@@ -2856,50 +2854,95 @@ private fun StatusButton(
 @Composable
 private fun BorderProgress(
     progress: Float,
-    color: Color
+    color: Color,
+    modifier: Modifier = Modifier
 ) {
     Canvas(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(1.dp)
+        modifier = modifier.padding(1.dp)
     ) {
         val stroke = 4.dp.toPx()
-        val path = AndroidPath()
+        val radius = 12.dp.toPx()
 
-        path.addRoundRect(
-            RectF(
-                stroke / 2f,
-                stroke / 2f,
-                size.width - stroke / 2f,
-                size.height - stroke / 2f
-            ),
-            12.dp.toPx(),
-            12.dp.toPx(),
-            AndroidPath.Direction.CW
+        val path = AndroidPath().apply {
+            addRoundRect(
+                RectF(
+                    stroke / 2f,
+                    stroke / 2f,
+                    size.width - stroke / 2f,
+                    size.height - stroke / 2f
+                ),
+                radius,
+                radius,
+                AndroidPath.Direction.CW
+            )
+        }
+
+        val pathMeasure = PathMeasure(
+            path,
+            false
         )
 
-        val measure = PathMeasure(path, false)
-        val part = AndroidPath()
+        val pathLength = pathMeasure.length
+        val visibleLength =
+            pathLength * progress.coerceIn(0f, 1f)
 
-        measure.getSegment(
-            0f,
-            measure.length * progress.coerceIn(0f, 1f),
-            part,
-            true
-        )
+        /*
+         * addRoundRect startet oben links.
+         * Dieser Versatz entspricht der halben oberen Kante
+         * und verschiebt den Startpunkt in die obere Mitte.
+         */
+        val topEdgeLength = size.width - 2f * radius
+        val startDistance = topEdgeLength / 2f
+
+        val visiblePath = AndroidPath()
+
+        val endDistance = startDistance + visibleLength
+
+        if (endDistance <= pathLength) {
+            pathMeasure.getSegment(
+                startDistance,
+                endDistance,
+                visiblePath,
+                true
+            )
+        } else {
+            /*
+             * Der Fortschritt läuft über das Ende des Pfades
+             * hinaus und beginnt wieder am Anfang.
+             */
+            pathMeasure.getSegment(
+                startDistance,
+                pathLength,
+                visiblePath,
+                true
+            )
+
+            pathMeasure.getSegment(
+                0f,
+                endDistance - pathLength,
+                visiblePath,
+                false
+            )
+        }
 
         val paint = Paint().apply {
             isAntiAlias = true
             style = Paint.Style.STROKE
             strokeWidth = stroke
+            strokeCap = Paint.Cap.ROUND
             this.color = color.toArgb()
         }
 
         drawIntoCanvas { canvas ->
-            canvas.nativeCanvas.drawPath(part, paint)
+            canvas.nativeCanvas.drawPath(
+                visiblePath,
+                paint
+            )
         }
     }
 }
+
+
 
 
 private fun routeFilter(
