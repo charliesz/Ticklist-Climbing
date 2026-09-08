@@ -1,7 +1,6 @@
 package com.charlie.ticklist.settings
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -17,9 +17,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.charlie.ticklist.ui.QrCodeThumbnail
+import com.charlie.ticklist.ui.QrCodeViewerDialog
 
 private const val GITHUB_URL =
     "https://github.com/charliesz/Ticklist-Climbing"
@@ -32,6 +39,10 @@ fun AboutScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+
+    var showReleasesQr by remember {
+        mutableStateOf(false)
+    }
 
     val versionName = runCatching {
         val packageInfo = context.packageManager.getPackageInfo(
@@ -60,7 +71,8 @@ fun AboutScreen(
                     .padding(
                         horizontal = 12.dp,
                         vertical = 8.dp
-                    )
+                    ),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
                     onClick = onBack
@@ -100,7 +112,8 @@ fun AboutScreen(
                     )
 
                     Text(
-                        text = "Offline Climbing and Bouldering Ticklist",
+                        text =
+                            "Offline Climbing and Bouldering Ticklist",
                         style = MaterialTheme.typography.bodyLarge
                     )
 
@@ -124,8 +137,9 @@ fun AboutScreen(
                     )
 
                     Text(
-                        text = "Quellcode, Entwicklung und Beiträge " +
-                                "sind auf GitHub verfügbar.",
+                        text =
+                            "Quellcode, Entwicklung und Beiträge " +
+                                    "sind auf GitHub verfügbar.",
                         style = MaterialTheme.typography.bodyMedium
                     )
 
@@ -138,15 +152,27 @@ fun AboutScreen(
                         Text("GitHub öffnen")
                     }
 
-                    Button(
-                        onClick = {
-                            openUrl(
-                                "https://github.com/charliesz/Ticklist-Climbing/releases"
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment =
+                            Alignment.CenterVertically,
+                        horizontalArrangement =
+                            Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("Releases öffnen")
+                        QrCodeThumbnail(
+                            onClick = {
+                                showReleasesQr = true
+                            }
+                        )
+
+                        Button(
+                            onClick = {
+                                openUrl(RELEASES_URL)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Releases öffnen")
+                        }
                     }
                 }
             }
@@ -164,12 +190,14 @@ fun AboutScreen(
                     )
 
                     Text(
-                        text = "GNU General Public License " +
-                                "version 3 or later",
+                        text =
+                            "GNU General Public License " +
+                                    "version 3 or later",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
+
             Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -183,13 +211,21 @@ fun AboutScreen(
                     )
 
                     Text(
-                        text = "Danke an Matze und Lotti " +
-                                "fürs Testen.\n" +
-                                "Danke an Cato für Alles!",
+                        text =
+                            "Danke an Matze und Lotti fürs Testen.\n" +
+                                    "Danke an Cato für alles!",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
         }
+    }
+
+    if (showReleasesQr) {
+        QrCodeViewerDialog(
+            onDismiss = {
+                showReleasesQr = false
+            }
+        )
     }
 }
