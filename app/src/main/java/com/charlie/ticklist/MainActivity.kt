@@ -2956,7 +2956,13 @@ private fun BorderProgress(
          * und verschiebt den Startpunkt in die obere Mitte.
          */
         val topEdgeLength = size.width - 2f * radius
-        val startDistance = topEdgeLength / 2f
+
+        val startDistance = (
+                size.width / 6f
+                ).coerceIn(
+                0f,
+                topEdgeLength
+            )
 
         val visiblePath = AndroidPath()
 
