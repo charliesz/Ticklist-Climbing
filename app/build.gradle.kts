@@ -15,8 +15,8 @@ android {
         applicationId = "com.charlie.ticklist"
         minSdk = 35
         targetSdk = 37
-        versionCode = 101
-        versionName = "v1.01"
+        versionCode = 102
+        versionName = "v1.02"
 
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"

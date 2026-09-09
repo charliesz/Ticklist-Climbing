@@ -845,7 +845,6 @@ private fun CollectionsScreen(
                 }
             ) { collection ->
 
-
                 val collectionRoutes = routes.filter {
                     it.collectionId == collection.id
                 }
@@ -890,7 +889,8 @@ private fun CollectionsScreen(
                                     editing = collection
                                     name = collection.name
                                     notes = collection.notes.orEmpty()
-                                    coverPhotoPath = collection.coverPhotoPath
+                                    coverPhotoPath =
+                                        collection.coverPhotoPath
                                     coverThumbnailPath =
                                         collection.coverThumbnailPath
                                     editDialog = true
@@ -900,11 +900,14 @@ private fun CollectionsScreen(
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement =
+                            Arrangement.spacedBy(10.dp),
+                        verticalAlignment =
+                            Alignment.CenterVertically
                     ) {
                         CollectionCoverThumbnail(
-                            thumbnailPath = collection.coverThumbnailPath,
+                            thumbnailPath =
+                                collection.coverThumbnailPath,
                             onClick = {
                                 if (draggedCollectionId == null) {
                                     onOpenCollection(collection.id)
@@ -924,15 +927,18 @@ private fun CollectionsScreen(
                         ) {
                             Text(
                                 text = collection.name,
-                                style = MaterialTheme.typography.titleMedium,
+                                style =
+                                    MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
 
                             Text(
-                                text = "${collectionRoutes.size} Routen · " +
-                                        "$tops Top ($flashes Flash)",
-                                style = MaterialTheme.typography.bodySmall
+                                text =
+                                    "${collectionRoutes.size} Routen · " +
+                                            "$tops Top ($flashes Flash)",
+                                style =
+                                    MaterialTheme.typography.bodySmall
                             )
 
                             if (!collection.notes.isNullOrBlank()) {
@@ -951,13 +957,15 @@ private fun CollectionsScreen(
                                 .pointerInput(collection.id) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
-                                            draggedCollectionId = collection.id
+                                            draggedCollectionId =
+                                                collection.id
                                             draggedCollectionOffset = 0f
                                         },
                                         onDrag = { change, dragAmount ->
                                             change.consume()
 
-                                            draggedCollectionOffset += dragAmount.y
+                                            draggedCollectionOffset +=
+                                                dragAmount.y
 
                                             val draggedInfo =
                                                 collectionListState
@@ -971,16 +979,18 @@ private fun CollectionsScreen(
                                             val draggedCenter =
                                                 draggedInfo.offset +
                                                         draggedCollectionOffset +
-                                                        draggedInfo.size / 2
+                                                        draggedInfo.size / 2f
 
                                             val targetInfo =
                                                 collectionListState
                                                     .layoutInfo
                                                     .visibleItemsInfo
                                                     .firstOrNull { itemInfo ->
-                                                        itemInfo.key != collection.id &&
+                                                        itemInfo.key !=
+                                                                collection.id &&
                                                                 draggedCenter >=
-                                                                itemInfo.offset &&
+                                                                itemInfo.offset +
+                                                                itemInfo.size / 2f &&
                                                                 draggedCenter <=
                                                                 itemInfo.offset +
                                                                 itemInfo.size
@@ -988,29 +998,33 @@ private fun CollectionsScreen(
                                                     ?: return@detectDragGesturesAfterLongPress
 
                                             val oldIndex =
-                                                orderedCollections.indexOfFirst {
-                                                    it.id == collection.id
-                                                }
+                                                orderedCollections
+                                                    .indexOfFirst {
+                                                        it.id == collection.id
+                                                    }
 
-                                            val newIndex =
-                                                targetInfo.index
+                                            val targetIndex =
+                                                orderedCollections
+                                                    .indexOfFirst {
+                                                        it.id == targetInfo.key
+                                                    }
 
                                             if (
                                                 oldIndex >= 0 &&
-                                                newIndex >= 0 &&
-                                                oldIndex != newIndex &&
-                                                newIndex < orderedCollections.size
+                                                targetIndex >= 0 &&
+                                                oldIndex != targetIndex
                                             ) {
                                                 val reordered =
-                                                    orderedCollections.toMutableList()
+                                                    orderedCollections
+                                                        .toMutableList()
 
                                                 val movedCollection =
                                                     reordered.removeAt(oldIndex)
 
                                                 reordered.add(
-                                                    newIndex.coerceIn(
+                                                    targetIndex.coerceIn(
                                                         0,
-                                                        reordered.lastIndex
+                                                        reordered.size
                                                     ),
                                                     movedCollection
                                                 )
@@ -1023,19 +1037,20 @@ private fun CollectionsScreen(
                                             }
                                         },
                                         onDragEnd = {
-                                            val finalOrder = orderedCollections
+                                            val finalOrder =
+                                                orderedCollections.mapIndexed { index,
+                                                                                collection ->
+                                                    collection.copy(
+                                                        sortOrder = index
+                                                    )
+                                                }
 
                                             draggedCollectionId = null
                                             draggedCollectionOffset = 0f
 
                                             scope.launch {
                                                 collectionDao.updateCollections(
-                                                    finalOrder.mapIndexed { index,
-                                                                            collection ->
-                                                        collection.copy(
-                                                            sortOrder = index
-                                                        )
-                                                    }
+                                                    finalOrder
                                                 )
                                             }
                                         },
@@ -1050,12 +1065,18 @@ private fun CollectionsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DragHandle,
-                                contentDescription = "Sammlung verschieben",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                contentDescription =
+                                    "Sammlung verschieben",
+                                tint =
+                                    MaterialTheme.colorScheme
+                                        .onSurfaceVariant
                             )
                         }
                     }
                 }
+
+
+
 
 
                 if (collectionViewerPath != null) {
@@ -1066,6 +1087,10 @@ private fun CollectionsScreen(
                         }
                     )
                 }
+            }
+        }
+    }
+
 
                 if (newDialog) {
                     AlertDialog(
@@ -1414,12 +1439,8 @@ private fun CollectionsScreen(
                         )
                     }
                 }
-
-
             }
-        }
-    }
-}
+
 
 
 
