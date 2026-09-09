@@ -28,15 +28,16 @@ class CollectionExportRepository(
             String
         ) -> Unit
     ) {
-        val collection = collectionDao.getCollection(collectionId)
+        val collection = collectionDao
+            .getCollection(collectionId)
             ?: error("Sammlung nicht gefunden.")
 
-        val routes = routeDao.getRoutesForCollection(collectionId)
+        val routes = routeDao.getRoutesForCollection(
+            collectionId
+        )
 
-        val routePhotos = mutableMapOf<
-                Long,
-                List<RoutePhotoEntity>
-                >()
+        val routePhotos =
+            mutableMapOf<Long, List<RoutePhotoEntity>>()
 
         for (route in routes) {
             routePhotos[route.id] =
@@ -49,9 +50,16 @@ class CollectionExportRepository(
             routePhotos = routePhotos
         )
 
+        val collectionFileName = toSafeFileName(
+            collection.name
+        )
+
+        val appVersion = getAppVersionName()
+
         val temporaryZip = File(
             context.cacheDir,
-            "ticklist_export_${System.currentTimeMillis()}.zip"
+            "${collectionFileName}_v${appVersion}_" +
+                    "${System.currentTimeMillis()}.zip"
         )
 
         try {
@@ -74,6 +82,39 @@ class CollectionExportRepository(
         }
     }
 
+    private fun getAppVersionName(): String {
+        return runCatching {
+            context.packageManager
+                .getPackageInfo(
+                    context.packageName,
+                    0
+                )
+                .versionName
+                .orEmpty()
+                .removePrefix("v")
+                .ifBlank {
+                    "unknown"
+                }
+        }.getOrDefault("unknown")
+    }
+
+    private fun toSafeFileName(
+        value: String
+    ): String {
+        return value
+            .trim()
+            .replace(
+                Regex(
+                    "[^a-zA-Z0-9äöüÄÖÜß._-]+"
+                ),
+                "_"
+            )
+            .trim('_')
+            .ifBlank {
+                "collection"
+            }
+    }
+
     private suspend fun createTemporaryZip(
         temporaryZip: File,
         collection: CollectionEntity,
@@ -92,8 +133,16 @@ class CollectionExportRepository(
         ).use { zip ->
 
             writeManifest(zip)
-            writeCollection(zip, collection)
-            writeRoutes(zip, routes)
+
+            writeCollection(
+                zip = zip,
+                collection = collection
+            )
+
+            writeRoutes(
+                zip = zip,
+                routes = routes
+            )
 
             var currentFile = 0
 
@@ -125,9 +174,11 @@ class CollectionExportRepository(
                     "Die Zieldatei konnte nicht geöffnet werden."
                 }
 
-                temporaryZip.inputStream().use { input ->
-                    input.copyTo(output)
-                }
+                temporaryZip
+                    .inputStream()
+                    .use { input ->
+                        input.copyTo(output)
+                    }
 
                 output.flush()
             }
@@ -158,10 +209,14 @@ class CollectionExportRepository(
             .put("name", collection.name)
             .put("discipline", collection.discipline)
             .put("createdAt", collection.createdAt)
-            .put("notes", collection.notes ?: JSONObject.NULL)
+            .put(
+                "notes",
+                collection.notes ?: JSONObject.NULL
+            )
             .put(
                 "coverPhotoPath",
-                collection.coverPhotoPath ?: JSONObject.NULL
+                collection.coverPhotoPath
+                    ?: JSONObject.NULL
             )
             .put(
                 "coverThumbnailPath",
@@ -169,10 +224,6 @@ class CollectionExportRepository(
                     ?: JSONObject.NULL
             )
 
-        // Wichtig:
-        // Hier werden bewusst keine Bilddateien geschrieben.
-        // Cover und Cover-Thumbnail kommen ausschließlich
-        // über buildExportFiles().
         writeTextEntry(
             zip = zip,
             path = "collection.json",
@@ -193,7 +244,10 @@ class CollectionExportRepository(
                     .put("number", route.number)
                     .put("name", route.name)
                     .put("difficulty", route.difficulty)
-                    .put("notes", route.notes ?: JSONObject.NULL)
+                    .put(
+                        "notes",
+                        route.notes ?: JSONObject.NULL
+                    )
             )
         }
 
@@ -231,15 +285,16 @@ class CollectionExportRepository(
                 addFileIfAvailable(
                     result = result,
                     sourcePath = photo.filePath,
-                    zipPath = "$routeDirectory/photo_${photo.id}.jpg"
+                    zipPath =
+                        "$routeDirectory/photo_${photo.id}.jpg"
                 )
 
                 addFileIfAvailable(
                     result = result,
                     sourcePath = photo.thumbnailPath,
                     zipPath =
-                        "$routeDirectory/photo_" +
-                                "${photo.id}-thumbnail.webp"
+                        "$routeDirectory/" +
+                                "photo_${photo.id}-thumbnail.webp"
                 )
             }
         }
@@ -288,8 +343,14 @@ class CollectionExportRepository(
         path: String,
         content: String
     ) {
-        zip.putNextEntry(ZipEntry(path))
-        zip.write(content.toByteArray(Charsets.UTF_8))
+        zip.putNextEntry(
+            ZipEntry(path)
+        )
+
+        zip.write(
+            content.toByteArray(Charsets.UTF_8)
+        )
+
         zip.closeEntry()
     }
 

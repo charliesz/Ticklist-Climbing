@@ -11,6 +11,12 @@ android {
         version = release(37)
     }
 
+        namespace = "com.charlie.ticklist"
+
+        buildFeatures {
+            buildConfig = true
+        }
+
     defaultConfig {
         applicationId = "com.charlie.ticklist"
         minSdk = 35

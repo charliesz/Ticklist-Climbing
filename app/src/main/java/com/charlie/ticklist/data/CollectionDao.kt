@@ -21,16 +21,6 @@ interface CollectionDao {
     fun observeAllCollections(): Flow<List<CollectionEntity>>
 
 
-    @Query(
-        """
-        SELECT * FROM collections
-        WHERE id = :id
-        LIMIT 1
-        """
-    )
-    suspend fun getCollection(
-        id: Int
-    ): CollectionEntity?
 
     @Query(
         """
@@ -138,6 +128,16 @@ interface CollectionDao {
     suspend fun updateCollections(
         collections: List<CollectionEntity>
     )
+    @Query(
+        """
+    SELECT * FROM collections
+    WHERE id = :collectionId
+    LIMIT 1
+    """
+    )
+    suspend fun getCollection(
+        collectionId: Int
+    ): CollectionEntity?
 
     @Delete
     suspend fun deleteCollection(

@@ -121,6 +121,24 @@ import androidx.compose.ui.graphics.graphicsLayer
 
 
 
+private fun getInstalledVersionName(
+    context: Context
+): String {
+    return runCatching {
+        context.packageManager
+            .getPackageInfo(
+                context.packageName,
+                0
+            )
+            .versionName
+            .orEmpty()
+            .ifBlank {
+                "unknown"
+            }
+    }.getOrDefault("unknown")
+}
+
+
 
 
 private enum class RouteStatus { FLASH, TOP, ZONE, PROJECT }
@@ -134,6 +152,9 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             val settingsRepository = remember {
                 AppSettingsRepository(context)
+            }
+            val appVersion = remember {
+                getInstalledVersionName(context)
             }
             val settings by settingsRepository.settings
                 .collectAsState(initial = AppSettings())
@@ -186,6 +207,9 @@ private fun TicklistApp(
             database = database,
             settingsRepository = settingsRepository
         )
+    }
+    val appVersion = remember(context) {
+        getInstalledVersionName(context)
     }
 
     var fullBackupState by remember {
@@ -352,8 +376,10 @@ private fun TicklistApp(
                 },
                 onCreateFullBackup = {
                     fullBackupLauncher.launch(
-                        "ticklist_full_backup.zip"
+                        "ticklist_full_backup_${appVersion}.zip"
                     )
+
+
                 },
                 onRestoreFullBackup = {
                     fullRestoreLauncher.launch(
@@ -1461,12 +1487,27 @@ private fun CollectionRoutesScreen(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
 
+
     val photoRepository = remember {
         RoutePhotoRepository(
             context = context,
             photoDao = photoDao
         )
     }
+    var collectionName by remember {
+        mutableStateOf("collection")
+    }
+    LaunchedEffect(collectionId) {
+        collectionName =
+            collectionDao
+                .getCollection(
+                    collectionId = collectionId
+                )
+                ?.name
+                ?.let(::toSafeFileName)
+                ?: "collection"
+    }
+
 
     val exportRepository = remember {
         CollectionExportRepository(
@@ -1557,7 +1598,6 @@ private fun CollectionRoutesScreen(
         mutableStateOf<String?>(null)
     }
 
-    val collectionName = currentCollection?.name ?: ""
 
     val mainPhotos by photoDao
         .observeMainPhotosForCollection(collectionId)
@@ -1628,7 +1668,19 @@ private fun CollectionRoutesScreen(
     var photoViewerPhotos by remember {
         mutableStateOf<List<RoutePhotoEntity>>(emptyList())
     }
-
+    val appVersion = remember(context) {
+        context.packageManager
+            .getPackageInfo(
+                context.packageName,
+                0
+            )
+            .versionName
+            .orEmpty()
+            .removePrefix("v")
+            .ifBlank {
+                "unknown"
+            }
+    }
     val shown = routes
         .filter { routeFilter(it.status) in filters }
         .sortedWith(routeComparator(sort, ascending))
@@ -1793,9 +1845,8 @@ private fun CollectionRoutesScreen(
                                         menuExpanded = false
 
                                         exportLauncher.launch(
-                                            "${collectionName.toSafeFileName(
-                                                "ticklist"
-                                            )}.zip"
+                                            "${collectionName}" +
+                                                    "_v${appVersion}.zip"
                                         )
                                     }
                                 )
@@ -2344,7 +2395,20 @@ private fun CollectionRoutesScreen(
         }
     }
 }
-
+private fun toSafeFileName(
+    value: String
+): String {
+    return value
+        .trim()
+        .replace(
+            Regex("[^a-zA-Z0-9äöüÄÖÜß._-]+"),
+            "_"
+        )
+        .trim('_')
+        .ifBlank {
+            "collection"
+        }
+}
 @Composable
 private fun FilterMenu(
     expanded: Boolean,
