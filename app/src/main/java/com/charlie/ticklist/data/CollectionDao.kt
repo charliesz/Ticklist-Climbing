@@ -6,12 +6,20 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
+import androidx.room.Update
+
 
 @Dao
 interface CollectionDao {
 
-    @Query("SELECT * FROM collections ORDER BY createdAt ASC")
+    @Query(
+        """
+    SELECT * FROM collections
+    ORDER BY sortOrder ASC, createdAt ASC, id ASC
+    """
+    )
     fun observeAllCollections(): Flow<List<CollectionEntity>>
+
 
     @Query(
         """
@@ -107,8 +115,14 @@ interface CollectionDao {
     suspend fun deleteCollectionById(
         id: Int
     ): Int
-    @Query("SELECT * FROM collections ORDER BY createdAt ASC")
+    @Query(
+        """
+    SELECT * FROM collections
+    ORDER BY sortOrder ASC, createdAt ASC, id ASC
+    """
+    )
     suspend fun observeAllCollectionsOnce(): List<CollectionEntity>
+
 
     @Query("SELECT COUNT(*) FROM collections")
     suspend fun countCollections(): Int
@@ -120,7 +134,10 @@ interface CollectionDao {
     suspend fun insertCollections(
         collections: List<CollectionEntity>
     )
-
+    @Update
+    suspend fun updateCollections(
+        collections: List<CollectionEntity>
+    )
 
     @Delete
     suspend fun deleteCollection(

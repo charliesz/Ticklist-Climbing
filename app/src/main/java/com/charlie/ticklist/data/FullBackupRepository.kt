@@ -404,6 +404,7 @@ class FullBackupRepository(
                     .put("name", collection.name)
                     .put("discipline", collection.discipline)
                     .put("createdAt", collection.createdAt)
+                    .put("sortOrder", collection.sortOrder)
                     .put("notes", collection.notes ?: JSONObject.NULL)
                     .put(
                         "coverPhotoPath",
@@ -530,6 +531,10 @@ class FullBackupRepository(
                         discipline = json.getString("discipline"),
                         createdAt = json.getLong("createdAt"),
                         notes = json.optStringOrNull("notes"),
+                        sortOrder = json.optInt(
+                            "sortOrder",
+                            index
+                        ),
                         coverPhotoPath = restoreCollectionPath(
                             temporaryDirectory = temporaryDirectory,
                             collectionId = collectionId,

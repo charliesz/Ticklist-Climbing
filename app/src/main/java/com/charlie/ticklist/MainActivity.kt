@@ -66,7 +66,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -112,10 +111,14 @@ import com.charlie.ticklist.data.CollectionImportRepository
 import com.charlie.ticklist.settings.ProgressTransferScreen
 import com.charlie.ticklist.ui.ClickableNotes
 import com.charlie.ticklist.data.FullBackupRepository
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+
 
 
 
@@ -647,6 +650,24 @@ private fun CollectionsScreen(
     var collectionViewerPath by remember {
         mutableStateOf<String?>(null)
     }
+    val collectionListState = rememberLazyListState()
+
+    var orderedCollections by remember {
+        mutableStateOf<List<CollectionEntity>>(emptyList())
+    }
+
+    var draggedCollectionId by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    var draggedCollectionOffset by remember {
+        mutableFloatStateOf(0f)
+    }
+    LaunchedEffect(collections) {
+        if (draggedCollectionId == null) {
+            orderedCollections = collections
+        }
+    }
 
     val openCoverPhotoPicker = rememberPhotoPicker { uri ->
         val collection = editing
@@ -691,7 +712,8 @@ private fun CollectionsScreen(
                     id = 1,
                     name = "Boulder 01–90",
                     discipline = "BOULDER",
-                    createdAt = System.currentTimeMillis()
+                    createdAt = System.currentTimeMillis(),
+                    sortOrder = 0
                 )
             )
         }
@@ -808,6 +830,7 @@ private fun CollectionsScreen(
     ) { padding ->
 
         LazyColumn(
+            state = collectionListState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
@@ -816,11 +839,12 @@ private fun CollectionsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(
-                items = collections,
+                items = orderedCollections,
                 key = { collection ->
                     collection.id
                 }
             ) { collection ->
+
 
                 val collectionRoutes = routes.filter {
                     it.collectionId == collection.id
@@ -834,22 +858,43 @@ private fun CollectionsScreen(
                     it.status == "FLASH"
                 }
 
+                val isDragged =
+                    draggedCollectionId == collection.id
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .graphicsLayer {
+                            translationY =
+                                if (isDragged) {
+                                    draggedCollectionOffset
+                                } else {
+                                    0f
+                                }
+
+                            alpha =
+                                if (isDragged) {
+                                    0.85f
+                                } else {
+                                    1f
+                                }
+                        }
                         .combinedClickable(
                             onClick = {
-                                onOpenCollection(collection.id)
+                                if (draggedCollectionId == null) {
+                                    onOpenCollection(collection.id)
+                                }
                             },
                             onLongClick = {
-                                editing = collection
-                                name = collection.name
-                                notes = collection.notes.orEmpty()
-                                coverPhotoPath =
-                                    collection.coverPhotoPath
-                                coverThumbnailPath =
-                                    collection.coverThumbnailPath
-                                editDialog = true
+                                if (draggedCollectionId == null) {
+                                    editing = collection
+                                    name = collection.name
+                                    notes = collection.notes.orEmpty()
+                                    coverPhotoPath = collection.coverPhotoPath
+                                    coverThumbnailPath =
+                                        collection.coverThumbnailPath
+                                    editDialog = true
+                                }
                             }
                         )
                 ) {
@@ -859,14 +904,17 @@ private fun CollectionsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         CollectionCoverThumbnail(
-                            thumbnailPath =
-                                collection.coverThumbnailPath,
+                            thumbnailPath = collection.coverThumbnailPath,
                             onClick = {
-                                onOpenCollection(collection.id)
+                                if (draggedCollectionId == null) {
+                                    onOpenCollection(collection.id)
+                                }
                             },
                             onLongClick = {
-                                collection.coverPhotoPath?.let { path ->
-                                    collectionViewerPath = path
+                                if (draggedCollectionId == null) {
+                                    collection.coverPhotoPath?.let { path ->
+                                        collectionViewerPath = path
+                                    }
                                 }
                             }
                         )
@@ -886,6 +934,7 @@ private fun CollectionsScreen(
                                         "$tops Top ($flashes Flash)",
                                 style = MaterialTheme.typography.bodySmall
                             )
+
                             if (!collection.notes.isNullOrBlank()) {
                                 ClickableNotes(
                                     notes = collection.notes,
@@ -894,367 +943,482 @@ private fun CollectionsScreen(
                                         .padding(top = 6.dp)
                                 )
                             }
+                        }
 
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .pointerInput(collection.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            draggedCollectionId = collection.id
+                                            draggedCollectionOffset = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+
+                                            draggedCollectionOffset += dragAmount.y
+
+                                            val draggedInfo =
+                                                collectionListState
+                                                    .layoutInfo
+                                                    .visibleItemsInfo
+                                                    .firstOrNull {
+                                                        it.key == collection.id
+                                                    }
+                                                    ?: return@detectDragGesturesAfterLongPress
+
+                                            val draggedCenter =
+                                                draggedInfo.offset +
+                                                        draggedCollectionOffset +
+                                                        draggedInfo.size / 2
+
+                                            val targetInfo =
+                                                collectionListState
+                                                    .layoutInfo
+                                                    .visibleItemsInfo
+                                                    .firstOrNull { itemInfo ->
+                                                        itemInfo.key != collection.id &&
+                                                                draggedCenter >=
+                                                                itemInfo.offset &&
+                                                                draggedCenter <=
+                                                                itemInfo.offset +
+                                                                itemInfo.size
+                                                    }
+                                                    ?: return@detectDragGesturesAfterLongPress
+
+                                            val oldIndex =
+                                                orderedCollections.indexOfFirst {
+                                                    it.id == collection.id
+                                                }
+
+                                            val newIndex =
+                                                targetInfo.index
+
+                                            if (
+                                                oldIndex >= 0 &&
+                                                newIndex >= 0 &&
+                                                oldIndex != newIndex &&
+                                                newIndex < orderedCollections.size
+                                            ) {
+                                                val reordered =
+                                                    orderedCollections.toMutableList()
+
+                                                val movedCollection =
+                                                    reordered.removeAt(oldIndex)
+
+                                                reordered.add(
+                                                    newIndex.coerceIn(
+                                                        0,
+                                                        reordered.lastIndex
+                                                    ),
+                                                    movedCollection
+                                                )
+
+                                                orderedCollections = reordered
+
+                                                draggedCollectionOffset -=
+                                                    targetInfo.offset -
+                                                            draggedInfo.offset
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val finalOrder = orderedCollections
+
+                                            draggedCollectionId = null
+                                            draggedCollectionOffset = 0f
+
+                                            scope.launch {
+                                                collectionDao.updateCollections(
+                                                    finalOrder.mapIndexed { index,
+                                                                            collection ->
+                                                        collection.copy(
+                                                            sortOrder = index
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            draggedCollectionId = null
+                                            draggedCollectionOffset = 0f
+                                            orderedCollections = collections
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DragHandle,
+                                contentDescription = "Sammlung verschieben",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
-            }
-        }
-    }
 
-    if (collectionViewerPath != null) {
-        CollectionCoverViewerDialog(
-            filePath = collectionViewerPath!!,
-            onDismiss = {
-                collectionViewerPath = null
-            }
-        )
-    }
 
-    if (newDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                newDialog = false
-            },
-            title = {
-                Text("Neue Sammlung")
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = {
-                            newName = it
-                        },
-                        label = {
-                            Text("Name")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = newCount,
-                        onValueChange = {
-                            newCount = it
-                        },
-                        label = {
-                            Text("Anzahl Routen")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                if (collectionViewerPath != null) {
+                    CollectionCoverViewerDialog(
+                        filePath = collectionViewerPath!!,
+                        onDismiss = {
+                            collectionViewerPath = null
+                        }
                     )
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val collectionName = newName.trim()
-                        val count = newCount.toIntOrNull() ?: 0
 
-                        if (collectionName.isNotBlank()) {
-                            scope.launch {
-                                val collectionId =
-                                    collectionDao.insertCollection(
-                                        CollectionEntity(
-                                            name = collectionName,
-                                            discipline = "BOULDER",
-                                            createdAt =
-                                                System.currentTimeMillis()
-                                        )
-                                    ).toInt()
+                if (newDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            newDialog = false
+                        },
+                        title = {
+                            Text("Neue Sammlung")
+                        },
+                        text = {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = newName,
+                                    onValueChange = {
+                                        newName = it
+                                    },
+                                    label = {
+                                        Text("Name")
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
 
-                                if (count > 0) {
-                                    routeDao.insertRoutes(
-                                        (1..count).map { number ->
-                                            RouteEntity(
-                                                number = number,
-                                                name = "%02d".format(number),
-                                                difficulty = "",
-                                                status = null,
-                                                collectionId = collectionId
-                                            )
+                                OutlinedTextField(
+                                    value = newCount,
+                                    onValueChange = {
+                                        newCount = it
+                                    },
+                                    label = {
+                                        Text("Anzahl Routen")
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val collectionName = newName.trim()
+                                    val count = newCount.toIntOrNull() ?: 0
+
+                                    if (collectionName.isNotBlank()) {
+                                        scope.launch {
+                                            val collectionId =
+                                                collectionDao.insertCollection(
+                                                    CollectionEntity(
+                                                        name = collectionName,
+                                                        discipline = "BOULDER",
+                                                        createdAt = System.currentTimeMillis(),
+                                                        sortOrder = (
+                                                                orderedCollections.maxOfOrNull {
+                                                                    it.sortOrder
+                                                                } ?: -1
+                                                                ) + 1
+                                                    )
+
+                                                ).toInt()
+
+                                            if (count > 0) {
+                                                routeDao.insertRoutes(
+                                                    (1..count).map { number ->
+                                                        RouteEntity(
+                                                            number = number,
+                                                            name = "%02d".format(number),
+                                                            difficulty = "",
+                                                            status = null,
+                                                            collectionId = collectionId
+                                                        )
+                                                    }
+                                                )
+                                            }
+
+                                            newDialog = false
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Anlegen")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    newDialog = false
+                                }
+                            ) {
+                                Text("Abbrechen")
+                            }
+                        }
+                    )
+                }
+
+                if (editDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            editDialog = false
+                            editing = null
+                        },
+                        title = {
+                            Text("Sammlung bearbeiten")
+                        },
+                        text = {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = name,
+                                    onValueChange = {
+                                        name = it
+                                    },
+                                    label = {
+                                        Text("Name")
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+
+                                OutlinedTextField(
+                                    value = notes,
+                                    onValueChange = {
+                                        notes = it
+                                    },
+                                    label = {
+                                        Text("Notizen / Wettbewerbsdaten")
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 4,
+                                    maxLines = 8
+                                )
+
+                                CollectionCoverThumbnail(
+                                    thumbnailPath = coverThumbnailPath,
+                                    onClick = {
+                                        if (coverPhotoPath != null) {
+                                            collectionViewerPath =
+                                                coverPhotoPath
+                                        }
+                                    },
+                                    onLongClick = {
+                                        openCoverPhotoPicker()
+                                    }
+                                )
+
+                                OutlinedButton(
+                                    onClick = {
+                                        openCoverPhotoPicker()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        if (coverPhotoPath == null) {
+                                            "Sammlungsfoto auswählen"
+                                        } else {
+                                            "Sammlungsfoto ersetzen"
                                         }
                                     )
                                 }
 
-                                newDialog = false
-                            }
-                        }
-                    }
-                ) {
-                    Text("Anlegen")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        newDialog = false
-                    }
-                ) {
-                    Text("Abbrechen")
-                }
-            }
-        )
-    }
+                                if (coverPhotoPath != null) {
+                                    TextButton(
+                                        onClick = {
+                                            CollectionPhotoStorage
+                                                .deleteCoverPhoto(
+                                                    filePath = coverPhotoPath,
+                                                    thumbnailPath =
+                                                        coverThumbnailPath
+                                                )
 
-    if (editDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                editDialog = false
-                editing = null
-            },
-            title = {
-                Text("Sammlung bearbeiten")
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = {
-                            name = it
-                        },
-                        label = {
-                            Text("Name")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
+                                            coverPhotoPath = null
+                                            coverThumbnailPath = null
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Sammlungsfoto löschen")
+                                    }
+                                }
 
-                    OutlinedTextField(
-                        value = notes,
-                        onValueChange = {
-                            notes = it
-                        },
-                        label = {
-                            Text("Notizen / Wettbewerbsdaten")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 4,
-                        maxLines = 8
-                    )
-
-                    CollectionCoverThumbnail(
-                        thumbnailPath = coverThumbnailPath,
-                        onClick = {
-                            if (coverPhotoPath != null) {
-                                collectionViewerPath =
-                                    coverPhotoPath
+                                TextButton(
+                                    onClick = {
+                                        deleteDialog = true
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Sammlung löschen")
+                                }
                             }
                         },
-                        onLongClick = {
-                            openCoverPhotoPicker()
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val collection = editing
+                                    val collectionName = name.trim()
+
+                                    if (
+                                        collection != null &&
+                                        collectionName.isNotBlank()
+                                    ) {
+                                        scope.launch {
+                                            collectionDao.updateCollectionDetails(
+                                                id = collection.id,
+                                                name = collectionName,
+                                                notes = notes.ifBlank {
+                                                    null
+                                                },
+                                                coverPhotoPath = coverPhotoPath,
+                                                coverThumbnailPath =
+                                                    coverThumbnailPath
+                                            )
+
+                                            editDialog = false
+                                            editing = null
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Speichern")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    editDialog = false
+                                    editing = null
+                                }
+                            ) {
+                                Text("Abbrechen")
+                            }
                         }
                     )
+                }
 
-                    OutlinedButton(
-                        onClick = {
-                            openCoverPhotoPicker()
+                if (deleteDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            deleteDialog = false
                         },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            if (coverPhotoPath == null) {
-                                "Sammlungsfoto auswählen"
-                            } else {
-                                "Sammlungsfoto ersetzen"
+                        title = {
+                            Text("Sammlung löschen?")
+                        },
+                        text = {
+                            Text(
+                                "Die Sammlung und alle zugehörigen Routen " +
+                                        "werden dauerhaft gelöscht."
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val collection = editing
+
+                                    if (collection != null) {
+                                        scope.launch {
+                                            routeDao.deleteRoutesForCollection(
+                                                collection.id
+                                            )
+
+                                            CollectionPhotoStorage
+                                                .deleteCoverPhoto(
+                                                    filePath =
+                                                        collection.coverPhotoPath,
+                                                    thumbnailPath =
+                                                        collection.coverThumbnailPath
+                                                )
+
+                                            collectionDao.deleteCollectionById(
+                                                collection.id
+                                            )
+
+                                            deleteDialog = false
+                                            editDialog = false
+                                            editing = null
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Löschen")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    deleteDialog = false
+                                }
+                            ) {
+                                Text("Abbrechen")
+                            }
+                        }
+                    )
+                }
+                when (val state = importState) {
+                    ImportState.Idle -> Unit
+
+                    is ImportState.Running -> {
+                        ImportProgressDialog(state = state)
+                    }
+
+                    is ImportState.Completed -> {
+                        AlertDialog(
+                            onDismissRequest = {
+                                importState = ImportState.Idle
+                            },
+                            title = {
+                                Text("Import abgeschlossen")
+                            },
+                            text = {
+                                Text(
+                                    "Die Sammlung „${state.collectionName}“ " +
+                                            "wurde erfolgreich importiert."
+                                )
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        importState = ImportState.Idle
+                                    }
+                                ) {
+                                    Text("OK")
+                                }
                             }
                         )
                     }
 
-                    if (coverPhotoPath != null) {
-                        TextButton(
-                            onClick = {
-                                CollectionPhotoStorage
-                                    .deleteCoverPhoto(
-                                        filePath = coverPhotoPath,
-                                        thumbnailPath =
-                                            coverThumbnailPath
-                                    )
-
-                                coverPhotoPath = null
-                                coverThumbnailPath = null
+                    is ImportState.Failed -> {
+                        AlertDialog(
+                            onDismissRequest = {
+                                importState = ImportState.Idle
                             },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Sammlungsfoto löschen")
-                        }
-                    }
-
-                    TextButton(
-                        onClick = {
-                            deleteDialog = true
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Sammlung löschen")
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val collection = editing
-                        val collectionName = name.trim()
-
-                        if (
-                            collection != null &&
-                            collectionName.isNotBlank()
-                        ) {
-                            scope.launch {
-                                collectionDao.updateCollectionDetails(
-                                    id = collection.id,
-                                    name = collectionName,
-                                    notes = notes.ifBlank {
-                                        null
-                                    },
-                                    coverPhotoPath = coverPhotoPath,
-                                    coverThumbnailPath =
-                                        coverThumbnailPath
-                                )
-
-                                editDialog = false
-                                editing = null
+                            title = {
+                                Text("Import fehlgeschlagen")
+                            },
+                            text = {
+                                Text(state.message)
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        importState = ImportState.Idle
+                                    }
+                                ) {
+                                    Text("OK")
+                                }
                             }
-                        }
+                        )
                     }
-                ) {
-                    Text("Speichern")
                 }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        editDialog = false
-                        editing = null
-                    }
-                ) {
-                    Text("Abbrechen")
-                }
+
+
             }
-        )
-    }
-
-    if (deleteDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                deleteDialog = false
-            },
-            title = {
-                Text("Sammlung löschen?")
-            },
-            text = {
-                Text(
-                    "Die Sammlung und alle zugehörigen Routen " +
-                            "werden dauerhaft gelöscht."
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val collection = editing
-
-                        if (collection != null) {
-                            scope.launch {
-                                routeDao.deleteRoutesForCollection(
-                                    collection.id
-                                )
-
-                                CollectionPhotoStorage
-                                    .deleteCoverPhoto(
-                                        filePath =
-                                            collection.coverPhotoPath,
-                                        thumbnailPath =
-                                            collection.coverThumbnailPath
-                                    )
-
-                                collectionDao.deleteCollectionById(
-                                    collection.id
-                                )
-
-                                deleteDialog = false
-                                editDialog = false
-                                editing = null
-                            }
-                        }
-                    }
-                ) {
-                    Text("Löschen")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        deleteDialog = false
-                    }
-                ) {
-                    Text("Abbrechen")
-                }
-            }
-        )
-    }
-    when (val state = importState) {
-        ImportState.Idle -> Unit
-
-        is ImportState.Running -> {
-            ImportProgressDialog(state = state)
-        }
-
-        is ImportState.Completed -> {
-            AlertDialog(
-                onDismissRequest = {
-                    importState = ImportState.Idle
-                },
-                title = {
-                    Text("Import abgeschlossen")
-                },
-                text = {
-                    Text(
-                        "Die Sammlung „${state.collectionName}“ " +
-                                "wurde erfolgreich importiert."
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            importState = ImportState.Idle
-                        }
-                    ) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
-
-        is ImportState.Failed -> {
-            AlertDialog(
-                onDismissRequest = {
-                    importState = ImportState.Idle
-                },
-                title = {
-                    Text("Import fehlgeschlagen")
-                },
-                text = {
-                    Text(state.message)
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            importState = ImportState.Idle
-                        }
-                    ) {
-                        Text("OK")
-                    }
-                }
-            )
         }
     }
-
-
 }
 
 

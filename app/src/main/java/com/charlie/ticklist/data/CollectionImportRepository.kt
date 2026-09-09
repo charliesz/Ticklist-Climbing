@@ -84,7 +84,14 @@ class CollectionImportRepository(
                         notes = collectionJson
                             .optStringOrNull("notes"),
                         coverPhotoPath = null,
-                        coverThumbnailPath = null
+                        coverThumbnailPath = null,
+                        sortOrder = collectionDao
+                            .getAllCollections()
+                            .maxOfOrNull {
+                                it.sortOrder
+                            }
+                            ?.plus(1)
+                            ?: 0
                     )
                 )
                 .toInt()
