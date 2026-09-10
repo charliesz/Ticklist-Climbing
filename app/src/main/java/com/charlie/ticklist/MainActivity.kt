@@ -883,6 +883,10 @@ private fun CollectionsScreen(
                     it.status == "FLASH"
                 }
 
+                val zones = collectionRoutes.count {
+                    it.status == "ZONE"
+                }
+
                 val isDragged =
                     draggedCollectionId == collection.id
 
@@ -962,7 +966,8 @@ private fun CollectionsScreen(
                             Text(
                                 text =
                                     "${collectionRoutes.size} Routen · " +
-                                            "$tops Top ($flashes Flash)",
+                                            "$tops Top ($flashes Flash) · " +
+                                            "$zones Zone",
                                 style =
                                     MaterialTheme.typography.bodySmall
                             )
